@@ -1,6 +1,14 @@
 /**
- * LOTTEON v6.01 daily filter auto patch
- * This patch is loaded after Code.gs v6.00 by loader.gs v1.2.
+ * LOTTEON v6.01 + v6.02 operating patch
+ *
+ * Loaded after Code.gs by loader.gs.
+ *
+ * v6.01:
+ * - 필터별_상품수 매일 자동 갱신
+ *
+ * v6.02:
+ * - 쿠팡전송수_수동입력의 쿠팡전체전송수 대신
+ *   필터별_상품수.API_totalCount를 전송수 기준으로 사용
  */
 
 function startDailyFilterCountsSchedule() {
@@ -30,9 +38,8 @@ function startDailyFilterCountsSchedule() {
     '예약 시간: 매일 06:10 전후\n' +
     '실행 방식: filterList 1페이지씩 자동 이어실행\n' +
     '최종 반영 시트: 필터별_상품수\n\n' +
-    '안전상 아래 작업은 자동 실행하지 않습니다.\n' +
-    '- 쿠팡재전송_로그 갱신\n' +
-    '- 핵심요약+대시보드 갱신\n\n' +
+    'v6.02 기준으로 대시보드/핵심요약의 전송수는\n' +
+    '쿠팡전송수_수동입력이 아니라 필터별_상품수 API_totalCount를 사용합니다.\n\n' +
     '바로 테스트하려면 같은 메뉴의 "필터별_상품수 자동 갱신 지금 시작"을 실행하세요.'
   );
 }
@@ -131,7 +138,8 @@ function runDailyFilterCountsStep_(options) {
           '필터 수: ' + result.filterCount + '개\n' +
           '페이지 실행: ' + runCount + '회\n' +
           '마지막 실행 소요초: ' + elapsedSec + '초\n\n' +
-          '다음 단계가 필요하면 ③ 쿠팡재전송_로그 갱신 → ④ 핵심요약+대시보드 갱신을 실행하세요.'
+          'v6.02 기준 전송수는 필터별_상품수 API_totalCount를 사용합니다.\n' +
+          '대시보드까지 반영하려면 ③ 쿠팡재전송_로그 갱신 → ④ 핵심요약+대시보드 갱신을 실행하세요.'
         );
       }
       return result;
@@ -218,4 +226,132 @@ function writeDailyFilterCountsStatus_(stage, message, memo) {
       memo: memo || ''
     });
   } catch (e) {}
+}
+
+// -----------------------------------------------------------------------------
+// v6.02: 쿠팡전송수 기준 변경
+// -----------------------------------------------------------------------------
+
+function readCoupangSentManualMap_() {
+  return readCoupangSentCountFromFilterTotalCountMap_();
+}
+
+function readCoupangSentCountFromFilterTotalCountMap_() {
+  const result = { byBrand: {}, byFilter: {}, byBrandAll: {}, byFilterAll: {}, rows: [] };
+  let rows = [];
+  try {
+    rows = readTable_(getSheet_(CONFIG.SHEETS.FILTERS));
+  } catch (e) {
+    return result;
+  }
+
+  (rows || []).forEach(function(r) {
+    const filterName = String(getObjectValueByHeader_(r, '검색필터명') || '').trim();
+    if (!isValidLotteonFilterName_(filterName)) return;
+
+    const brand = String(getObjectValueByHeader_(r, '브랜드명') || '').trim() || brandFromFilterName_(filterName);
+    if (!filterName && !brand) return;
+
+    const account = accountFromFilterName_(filterName);
+    const accountId = String(getObjectValueByHeader_(r, '쿠팡계정ID') || '').trim() || account.accountId || '';
+    const accountNo = String(getObjectValueByHeader_(r, '계정번호') || '').trim() || account.accountNo || '';
+    const totalRaw = getObjectValueByHeader_(r, 'API_totalCount');
+    const hasTotal = String(totalRaw || '').trim() !== '';
+    const total = hasTotal ? toNumber_(totalRaw) : 0;
+    const recentDate = normalizeDateText_(getObjectValueByHeader_(r, 'API_최근수집일자'));
+    const createDate = normalizeDateText_(getObjectValueByHeader_(r, 'API_필터생성일'));
+
+    const accountCounts = { beliun1021: 0, beliun1023: 0, beliun1024: 0 };
+    if (accountId === 'beliun1021') accountCounts.beliun1021 = total;
+    if (accountId === 'beliun1023') accountCounts.beliun1023 = total;
+    if (accountId === 'beliun1024') accountCounts.beliun1024 = total;
+
+    const item = {
+      confirmDate: recentDate || createDate || '',
+      statusRaw: '필터별_상품수 API_totalCount 기준',
+      statusType: 'API_TOTALCOUNT',
+      isAdded: false,
+      isDeleted: false,
+      isMoved: false,
+      inactive: false,
+      filterName: filterName,
+      brand: brand,
+      total: total,
+      hasTotal: hasTotal,
+      mangoCount: total,
+      hasMangoCount: hasTotal,
+      accountCounts: accountCounts,
+      accountId: accountId,
+      accountNo: accountNo,
+      sendDate: '',
+      memo: 'v6.02: 쿠팡전송수_수동입력 대신 필터별_상품수 API_totalCount 사용'
+    };
+
+    result.rows.push(item);
+    if (filterName) {
+      result.byFilter[filterName] = item;
+      result.byFilterAll[filterName] = item;
+    }
+
+    const brandKey = normalizeCoupangWorkLogBrandMergeKey_(brand, filterName);
+    if (brandKey) {
+      if (!result.byBrand[brandKey] || preferApiTotalCountItem_(item, result.byBrand[brandKey])) result.byBrand[brandKey] = item;
+      if (!result.byBrandAll[brandKey] || preferApiTotalCountItem_(item, result.byBrandAll[brandKey])) result.byBrandAll[brandKey] = item;
+    }
+
+    const normalizedBrandKey = normalizeBrandKey_(brand);
+    if (normalizedBrandKey) {
+      if (!result.byBrand[normalizedBrandKey] || preferApiTotalCountItem_(item, result.byBrand[normalizedBrandKey])) result.byBrand[normalizedBrandKey] = item;
+      if (!result.byBrandAll[normalizedBrandKey] || preferApiTotalCountItem_(item, result.byBrandAll[normalizedBrandKey])) result.byBrandAll[normalizedBrandKey] = item;
+    }
+  });
+
+  return result;
+}
+
+function preferApiTotalCountItem_(candidate, current) {
+  if (!current) return true;
+  if (!!candidate.hasTotal !== !!current.hasTotal) return !!candidate.hasTotal;
+  const cDate = normalizeDateText_(candidate.confirmDate);
+  const pDate = normalizeDateText_(current.confirmDate);
+  if (cDate && pDate && cDate !== pDate) return cDate > pDate;
+  if (candidate.total !== current.total) return toNumber_(candidate.total) > toNumber_(current.total);
+  return String(candidate.filterName || '') > String(current.filterName || '');
+}
+
+function applyCoupangSentManualToBrandMetrics_(brandMap) {
+  const apiMap = readCoupangSentCountFromFilterTotalCountMap_();
+
+  (apiMap.rows || []).forEach(function(item) {
+    if (!item || item.inactive) return;
+    const brand = item.brand || brandFromFilterName_(item.filterName) || '브랜드미확인';
+    if (!brandMap[brand]) brandMap[brand] = createBrandMetric_(brand, item.filterName, item.accountNo || '', item.accountId || '');
+  });
+
+  Object.keys(brandMap).forEach(function(brand) {
+    const b = brandMap[brand];
+    const filterName = String(b.filterName || '').trim();
+    const item = apiMap.byFilter[filterName] || apiMap.byBrand[normalizeCoupangWorkLogBrandMergeKey_(brand, filterName)] || apiMap.byBrand[normalizeBrandKey_(brand)];
+    if (!item || item.inactive) return;
+
+    if (item.hasTotal) {
+      b.coupangSentCount = item.total || 0;
+      b.manualCoupangSentCount = 0;
+    } else {
+      b.coupangSentCount = b.coupangSentCount || 0;
+      b.manualCoupangSentCount = 0;
+    }
+
+    if (item.hasMangoCount && item.mangoCount > 0) b.productCount = item.mangoCount;
+    b.manualCoupangAccountCounts = item.accountCounts || {};
+    if (item.filterName) b.filterName = item.filterName;
+    if (item.accountId) {
+      b.accountId = item.accountId;
+      b.accountNo = item.accountNo || b.accountNo;
+    }
+
+    b.coupangSentStatus = b.coupangSentCount > 0
+      ? '필터별_상품수 API_totalCount 기준 전송수 확인'
+      : '필터별_상품수 API_totalCount 0 또는 미확인';
+  });
 }
