@@ -1,5 +1,5 @@
 /**
- * LOTTEON v6.01 + v6.02 + v6.03 operating patch
+ * LOTTEON v6.01 + v6.02 + v6.03 + v6.04 operating patch
  *
  * Loaded after Code.gs by loader.gs.
  *
@@ -13,7 +13,10 @@
  * v6.03:
  * - 이미 생성된 핵심_브랜드요약/대시보드의 전송수도
  *   필터별_상품수.API_totalCount로 직접 보정
- * - 대표검색필터명 exact match 우선, 없으면 브랜드명 기준 합산
+ *
+ * v6.04:
+ * - 1K2, 4보브, 5숲, 3플라스틱아일랜드_01 같은 숫자 접두어 필터 브랜드를
+ *   K2, 보브, 숲, 플라스틱아일랜드로 정규화해 기존 매출 행에 병합
  */
 
 function startDailyFilterCountsSchedule() {
@@ -43,8 +46,7 @@ function startDailyFilterCountsSchedule() {
     '예약 시간: 매일 06:10 전후\n' +
     '실행 방식: filterList 1페이지씩 자동 이어실행\n' +
     '최종 반영 시트: 필터별_상품수\n\n' +
-    'v6.03 기준으로 대시보드/핵심요약의 전송수는\n' +
-    '필터별_상품수 API_totalCount로 직접 보정됩니다.'
+    'v6.04 기준으로 숫자 접두어 필터도 원 브랜드로 병합합니다.'
   );
 }
 
@@ -232,7 +234,7 @@ function writeDailyFilterCountsStatus_(stage, message, memo) {
 }
 
 // -----------------------------------------------------------------------------
-// v6.02: 쿠팡전송수 기준 변경 - 내부 분석 함수용 map 교체
+// v6.02~v6.04: 쿠팡전송수 기준 변경 및 숫자 접두어 브랜드 정규화
 // -----------------------------------------------------------------------------
 
 function readCoupangSentManualMap_() {
@@ -240,7 +242,7 @@ function readCoupangSentManualMap_() {
 }
 
 function readCoupangSentCountFromFilterTotalCountMap_() {
-  const map = buildFilterApiTotalCountMap_v603_();
+  const map = buildFilterApiTotalCountMap_v604_();
   const result = { byBrand: {}, byFilter: {}, byBrandAll: {}, byFilterAll: {}, rows: [] };
 
   Object.keys(map.byFilter).forEach(function(filterName) {
@@ -259,7 +261,7 @@ function readCoupangSentCountFromFilterTotalCountMap_() {
       isMoved: false,
       inactive: false,
       filterName: item.filterName,
-      brand: item.brand,
+      brand: item.canonicalBrand || item.brand,
       total: item.total,
       hasTotal: item.hasTotal,
       mangoCount: item.total,
@@ -268,20 +270,20 @@ function readCoupangSentCountFromFilterTotalCountMap_() {
       accountId: item.accountId,
       accountNo: item.accountNo,
       sendDate: '',
-      memo: 'v6.02: 쿠팡전송수_수동입력 대신 필터별_상품수 API_totalCount 사용'
+      memo: 'v6.04: 필터별_상품수 API_totalCount 사용 / 숫자 접두어 브랜드 정규화'
     };
 
     result.rows.push(out);
     result.byFilter[item.filterName] = out;
     result.byFilterAll[item.filterName] = out;
 
-    const brandKey = normalizePatchKey_v603_(item.brand);
+    const brandKey = normalizePatchKey_v604_(out.brand);
     if (brandKey) {
       if (!result.byBrand[brandKey]) result.byBrand[brandKey] = out;
       if (!result.byBrandAll[brandKey]) result.byBrandAll[brandKey] = out;
     }
 
-    const mergeKey = normalizeCoupangWorkLogBrandMergeKey_(item.brand, item.filterName);
+    const mergeKey = normalizeCoupangWorkLogBrandMergeKey_(out.brand, item.filterName);
     if (mergeKey) {
       if (!result.byBrand[mergeKey]) result.byBrand[mergeKey] = out;
       if (!result.byBrandAll[mergeKey]) result.byBrandAll[mergeKey] = out;
@@ -295,14 +297,14 @@ function applyCoupangSentManualToBrandMetrics_(brandMap) {
   const apiMap = readCoupangSentCountFromFilterTotalCountMap_();
   (apiMap.rows || []).forEach(function(item) {
     if (!item || item.inactive) return;
-    const brand = item.brand || brandFromFilterName_(item.filterName) || '브랜드미확인';
+    const brand = item.brand || canonicalBrandFromFilterName_v604_(item.filterName) || '브랜드미확인';
     if (!brandMap[brand]) brandMap[brand] = createBrandMetric_(brand, item.filterName, item.accountNo || '', item.accountId || '');
   });
 
   Object.keys(brandMap).forEach(function(brand) {
     const b = brandMap[brand];
     const filterName = String(b.filterName || '').trim();
-    const item = apiMap.byFilter[filterName] || apiMap.byBrand[normalizeCoupangWorkLogBrandMergeKey_(brand, filterName)] || apiMap.byBrand[normalizePatchKey_v603_(brand)];
+    const item = apiMap.byFilter[filterName] || apiMap.byBrand[normalizeCoupangWorkLogBrandMergeKey_(brand, filterName)] || apiMap.byBrand[normalizePatchKey_v604_(brand)];
     if (!item || item.inactive) return;
 
     if (item.hasTotal) {
@@ -322,51 +324,53 @@ function applyCoupangSentManualToBrandMetrics_(brandMap) {
   });
 }
 
-// -----------------------------------------------------------------------------
-// v6.03: 핵심_브랜드요약 값을 직접 보정한 뒤 대시보드 재생성
-// -----------------------------------------------------------------------------
+var __baseBuildDashboard_v604 = typeof buildDashboard_ === 'function' ? buildDashboard_ : null;
+var __baseRefreshDashboardFastOnly_v604 = typeof refreshDashboardFastOnly === 'function' ? refreshDashboardFastOnly : null;
+var __baseRunPendingChangesApproval_v604 = typeof runPendingChangesApproval === 'function' ? runPendingChangesApproval : null;
+var __baseRefreshCoreSummaryAndDashboard_v604 = typeof refreshCoreSummaryAndDashboardWithRetransmitLogDates === 'function' ? refreshCoreSummaryAndDashboardWithRetransmitLogDates : null;
 
-var __baseRefreshDashboardFastOnly_v603 = typeof refreshDashboardFastOnly === 'function' ? refreshDashboardFastOnly : null;
-var __baseRunPendingChangesApproval_v603 = typeof runPendingChangesApproval === 'function' ? runPendingChangesApproval : null;
-var __baseRefreshCoreSummaryAndDashboard_v603 = typeof refreshCoreSummaryAndDashboardWithRetransmitLogDates === 'function' ? refreshCoreSummaryAndDashboardWithRetransmitLogDates : null;
+if (__baseBuildDashboard_v604) {
+  buildDashboard_ = function() {
+    patchCoreSummarySentCountsFromFilterApiTotalCount_v604_();
+    return __baseBuildDashboard_v604.apply(this, arguments);
+  };
+}
 
 refreshDashboardFastOnly = function() {
-  patchCoreSummarySentCountsFromFilterApiTotalCount_v603_();
-  const result = __baseRefreshDashboardFastOnly_v603 ? __baseRefreshDashboardFastOnly_v603.apply(this, arguments) : null;
-  patchCoreSummarySentCountsFromFilterApiTotalCount_v603_();
-  return result;
+  patchCoreSummarySentCountsFromFilterApiTotalCount_v604_();
+  return __baseRefreshDashboardFastOnly_v604 ? __baseRefreshDashboardFastOnly_v604.apply(this, arguments) : null;
 };
 
 runPendingChangesApproval = function() {
-  const result = __baseRunPendingChangesApproval_v603 ? __baseRunPendingChangesApproval_v603.apply(this, arguments) : null;
-  patchCoreSummarySentCountsFromFilterApiTotalCount_v603_();
+  const result = __baseRunPendingChangesApproval_v604 ? __baseRunPendingChangesApproval_v604.apply(this, arguments) : null;
+  patchCoreSummarySentCountsFromFilterApiTotalCount_v604_();
   return result;
 };
 
 refreshCoreSummaryAndDashboardWithRetransmitLogDates = function() {
-  const result = __baseRefreshCoreSummaryAndDashboard_v603 ? __baseRefreshCoreSummaryAndDashboard_v603.apply(this, arguments) : null;
-  patchCoreSummarySentCountsFromFilterApiTotalCount_v603_();
-  if (__baseRefreshDashboardFastOnly_v603) __baseRefreshDashboardFastOnly_v603();
+  const result = __baseRefreshCoreSummaryAndDashboard_v604 ? __baseRefreshCoreSummaryAndDashboard_v604.apply(this, arguments) : null;
+  patchCoreSummarySentCountsFromFilterApiTotalCount_v604_();
+  if (__baseRefreshDashboardFastOnly_v604) __baseRefreshDashboardFastOnly_v604();
   return result;
 };
 
-function patchCoreSummarySentCountsFromFilterApiTotalCount_v603_() {
+function patchCoreSummarySentCountsFromFilterApiTotalCount_v604_() {
   const ss = SpreadsheetApp.getActive();
   const summarySheet = ss.getSheetByName(CONFIG.SHEETS.BRAND_SUMMARY);
   if (!summarySheet || summarySheet.getLastRow() < 2) return { updated: 0, reason: 'NO_SUMMARY' };
 
-  const filterMap = buildFilterApiTotalCountMap_v603_();
+  const filterMap = buildFilterApiTotalCountMap_v604_();
   const summaryRange = summarySheet.getDataRange();
   const values = summaryRange.getValues();
   if (!values || values.length < 2) return { updated: 0, reason: 'EMPTY_SUMMARY' };
 
   const header = values[0];
-  const colBrand = findHeaderIndex_v603_(header, ['브랜드명']);
-  const colFilter = findHeaderIndex_v603_(header, ['대표검색필터명', '대표검색필터']);
-  const colSent = findHeaderIndex_v603_(header, ['전송수']);
-  const colSalesProduct = findHeaderIndex_v603_(header, ['매출상품수']);
-  const colRate = findHeaderIndex_v603_(header, ['매출상품률']);
-  const colMemo = findHeaderIndex_v603_(header, ['요약메모']);
+  const colBrand = findHeaderIndex_v604_(header, ['브랜드명']);
+  const colFilter = findHeaderIndex_v604_(header, ['대표검색필터명', '대표검색필터']);
+  const colSent = findHeaderIndex_v604_(header, ['전송수']);
+  const colSalesProduct = findHeaderIndex_v604_(header, ['매출상품수']);
+  const colRate = findHeaderIndex_v604_(header, ['매출상품률']);
+  const colMemo = findHeaderIndex_v604_(header, ['요약메모']);
 
   if (colSent < 0) return { updated: 0, reason: 'NO_SENT_COLUMN' };
 
@@ -375,8 +379,9 @@ function patchCoreSummarySentCountsFromFilterApiTotalCount_v603_() {
     const brand = colBrand >= 0 ? String(values[r][colBrand] || '').trim() : '';
     const filterName = colFilter >= 0 ? String(values[r][colFilter] || '').trim() : '';
     const exact = filterName ? filterMap.byFilter[filterName] : null;
-    const brandItem = brand ? filterMap.byBrand[normalizePatchKey_v603_(brand)] : null;
-    const item = exact || brandItem;
+    const brandItem = brand ? filterMap.byBrand[normalizePatchKey_v604_(brand)] : null;
+    const filterCanonicalItem = filterName ? filterMap.byBrand[normalizePatchKey_v604_(canonicalBrandFromFilterName_v604_(filterName))] : null;
+    const item = exact || brandItem || filterCanonicalItem;
     if (!item || !item.hasTotal) continue;
 
     values[r][colSent] = item.total;
@@ -386,9 +391,8 @@ function patchCoreSummarySentCountsFromFilterApiTotalCount_v603_() {
     }
     if (colMemo >= 0) {
       const oldMemo = String(values[r][colMemo] || '');
-      if (oldMemo.indexOf('API_totalCount') < 0) {
-        values[r][colMemo] = oldMemo ? oldMemo + ' / 전송수 API_totalCount 기준' : '전송수 API_totalCount 기준';
-      }
+      const newMemo = '전송수 API_totalCount 기준';
+      if (oldMemo.indexOf(newMemo) < 0) values[r][colMemo] = oldMemo ? oldMemo + ' / ' + newMemo : newMemo;
     }
     updated++;
   }
@@ -396,11 +400,11 @@ function patchCoreSummarySentCountsFromFilterApiTotalCount_v603_() {
   summaryRange.setValues(values);
   if (colSent >= 0 && values.length > 1) summarySheet.getRange(2, colSent + 1, values.length - 1, 1).setNumberFormat('#,##0');
   if (colRate >= 0 && values.length > 1) summarySheet.getRange(2, colRate + 1, values.length - 1, 1).setNumberFormat('0.00%');
-  log_('patch_summary_sent_count_v603', 'updated=' + updated + ' / source=필터별_상품수.API_totalCount');
+  log_('patch_summary_sent_count_v604', 'updated=' + updated + ' / source=필터별_상품수.API_totalCount / numberedBrandNormalized=Y');
   return { updated: updated };
 }
 
-function buildFilterApiTotalCountMap_v603_() {
+function buildFilterApiTotalCountMap_v604_() {
   const result = { byFilter: {}, byBrand: {} };
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(CONFIG.SHEETS.FILTERS);
@@ -408,16 +412,15 @@ function buildFilterApiTotalCountMap_v603_() {
 
   const values = sheet.getDataRange().getValues();
   const header = values[0];
-  const colFilter = findHeaderIndex_v603_(header, ['검색필터명']);
-  const colBrand = findHeaderIndex_v603_(header, ['브랜드명']);
-  const colTotal = findHeaderIndex_v603_(header, ['API_totalCount', 'APItotalCount']);
-  const colAccountId = findHeaderIndex_v603_(header, ['쿠팡계정ID']);
-  const colAccountNo = findHeaderIndex_v603_(header, ['계정번호']);
-  const colRecent = findHeaderIndex_v603_(header, ['API_최근수집일자']);
-  const colCreate = findHeaderIndex_v603_(header, ['API_필터생성일']);
+  const colFilter = findHeaderIndex_v604_(header, ['검색필터명']);
+  const colBrand = findHeaderIndex_v604_(header, ['브랜드명']);
+  const colTotal = findHeaderIndex_v604_(header, ['API_totalCount', 'APItotalCount']);
+  const colAccountId = findHeaderIndex_v604_(header, ['쿠팡계정ID']);
+  const colAccountNo = findHeaderIndex_v604_(header, ['계정번호']);
+  const colRecent = findHeaderIndex_v604_(header, ['API_최근수집일자']);
+  const colCreate = findHeaderIndex_v604_(header, ['API_필터생성일']);
   if (colFilter < 0 || colTotal < 0) return result;
 
-  const brandSum = {};
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
     const filterName = String(row[colFilter] || '').trim();
@@ -426,56 +429,85 @@ function buildFilterApiTotalCountMap_v603_() {
     const rawTotal = row[colTotal];
     const hasTotal = String(rawTotal || '').trim() !== '';
     const total = Number(String(rawTotal || '0').replace(/,/g, '')) || 0;
-    const brand = colBrand >= 0 ? String(row[colBrand] || '').trim() : brandFromFilterName_(filterName);
+    const rawBrand = colBrand >= 0 ? String(row[colBrand] || '').trim() : '';
+    const canonicalBrand = canonicalBrandFromRawBrandOrFilter_v604_(rawBrand, filterName);
     const item = {
       filterName: filterName,
-      brand: brand,
+      brand: rawBrand || canonicalBrand,
+      canonicalBrand: canonicalBrand,
       total: total,
       hasTotal: hasTotal,
       accountId: colAccountId >= 0 ? String(row[colAccountId] || '').trim() : '',
       accountNo: colAccountNo >= 0 ? String(row[colAccountNo] || '').trim() : '',
       recentDate: colRecent >= 0 ? String(row[colRecent] || '').trim() : '',
-      createDate: colCreate >= 0 ? String(row[colCreate] || '').trim() : ''
+      createDate: colCreate >= 0 ? String(row[colCreate] || '').trim() : '',
+      isNumbered: isNumberedFilterBrand_v604_(rawBrand, filterName)
     };
+
     result.byFilter[filterName] = item;
 
-    const brandKey = normalizePatchKey_v603_(brand);
-    if (brandKey) {
-      if (!brandSum[brandKey]) {
-        brandSum[brandKey] = {
-          filterName: filterName,
-          brand: brand,
-          total: 0,
-          hasTotal: false,
-          accountId: item.accountId,
-          accountNo: item.accountNo,
-          recentDate: item.recentDate,
-          createDate: item.createDate
-        };
-      }
-      brandSum[brandKey].total += total;
-      brandSum[brandKey].hasTotal = brandSum[brandKey].hasTotal || hasTotal;
-    }
+    const brandKey = normalizePatchKey_v604_(canonicalBrand);
+    if (brandKey && shouldPreferFilterApiItem_v604_(item, result.byBrand[brandKey])) result.byBrand[brandKey] = item;
   }
 
-  result.byBrand = brandSum;
   return result;
 }
 
-function findHeaderIndex_v603_(headerRow, candidates) {
-  const normalized = (headerRow || []).map(function(h) { return normalizeHeaderKey_v603_(h); });
+function shouldPreferFilterApiItem_v604_(candidate, current) {
+  if (!current) return true;
+  if (!!candidate.hasTotal !== !!current.hasTotal) return !!candidate.hasTotal;
+  if (!!candidate.isNumbered !== !!current.isNumbered) return !!candidate.isNumbered;
+  const cDate = String(candidate.recentDate || candidate.createDate || '');
+  const pDate = String(current.recentDate || current.createDate || '');
+  if (cDate && pDate && cDate !== pDate) return cDate > pDate;
+  if (candidate.total !== current.total) return Number(candidate.total || 0) > Number(current.total || 0);
+  return String(candidate.filterName || '') > String(current.filterName || '');
+}
+
+function canonicalBrandFromRawBrandOrFilter_v604_(brand, filterName) {
+  const fromBrand = canonicalizeBrandText_v604_(brand);
+  if (fromBrand) return fromBrand;
+  return canonicalBrandFromFilterName_v604_(filterName);
+}
+
+function canonicalBrandFromFilterName_v604_(filterName) {
+  const text = String(filterName || '').trim();
+  if (!text) return '';
+  const parts = text.split('_');
+  if (parts.length >= 3) return canonicalizeBrandText_v604_(parts.slice(2).join('_'));
+  return canonicalizeBrandText_v604_(text.replace(/^롯백_?\d*_?/, ''));
+}
+
+function canonicalizeBrandText_v604_(value) {
+  let text = String(value || '').trim();
+  if (!text) return '';
+  text = text.replace(/^\d+/, '');
+  text = text.replace(/_\d+$/, '');
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+function isNumberedFilterBrand_v604_(brand, filterName) {
+  const raw = String(brand || '').trim();
+  if (/^\d+/.test(raw)) return true;
+  const fromFilter = String(filterName || '').split('_').slice(2).join('_');
+  return /^\d+/.test(fromFilter);
+}
+
+function findHeaderIndex_v604_(headerRow, candidates) {
+  const normalized = (headerRow || []).map(function(h) { return normalizeHeaderKey_v604_(h); });
   for (let i = 0; i < candidates.length; i++) {
-    const key = normalizeHeaderKey_v603_(candidates[i]);
+    const key = normalizeHeaderKey_v604_(candidates[i]);
     const idx = normalized.indexOf(key);
     if (idx >= 0) return idx;
   }
   return -1;
 }
 
-function normalizeHeaderKey_v603_(v) {
+function normalizeHeaderKey_v604_(v) {
   return String(v || '').replace(/\s+/g, '').replace(/\n/g, '').replace(/_/g, '').trim();
 }
 
-function normalizePatchKey_v603_(v) {
-  return String(v || '').toLowerCase().replace(/\s+/g, '').replace(/[\[\]\(\)\{\}\-_]/g, '').trim();
+function normalizePatchKey_v604_(v) {
+  return canonicalizeBrandText_v604_(v).toLowerCase().replace(/\s+/g, '').replace(/[\[\]\(\)\{\}\-_]/g, '').trim();
 }
