@@ -3,10 +3,11 @@
  *
  * 목적:
  * - 필터별_상품수 시트의 브랜드명은 검색필터명에서 두 번째 '_' 다음 전체 문자열을 사용합니다.
- * - 단, 뒤에 붙은 관리용 suffix '_번호'는 제거합니다.
- * - 예: 롯백_04_1_K2 -> 1_K2
- * - 예: 롯백_03_3_플라스틱아일랜드_01 -> 3_플라스틱아일랜드
- * - 예: 롯백_04_3_레노마_01 -> 3_레노마
+ * - 단, 앞에 붙은 관리용 prefix '숫자_'와 뒤에 붙은 관리용 suffix '_번호'는 제거합니다.
+ * - 예: 롯백_04_1_K2 -> K2
+ * - 예: 롯백_03_3_플라스틱아일랜드_01 -> 플라스틱아일랜드
+ * - 예: 롯백_04_3_레노마_01 -> 레노마
+ * - 예: 롯백_04_4_엄브로_01 -> 엄브로
  *
  * 주의:
  * - 이 패치는 필터별_상품수 시트의 브랜드명 표시 기준만 보정합니다.
@@ -88,7 +89,7 @@ function normalizeFilterSheetBrandNamesFromSecondUnderscore_v608_() {
   }
 
   try {
-    log_('patch_filter_brand_second_underscore_v608', 'updated=' + updated + ' / rule=검색필터명 두 번째 underscore 다음 + 후행 _번호 제거');
+    log_('patch_filter_brand_second_underscore_v608', 'updated=' + updated + ' / rule=두 번째 underscore 다음 + 앞 숫자_ 제거 + 뒤 _번호 제거');
   } catch (e) {}
 
   return { updated: updated };
@@ -101,11 +102,15 @@ function brandNameAfterSecondUnderscore_v608_(filterName) {
   if (first < 0) return '';
   var second = text.indexOf('_', first + 1);
   if (second < 0) return '';
-  return stripTrailingUnderscoreNumber_v608_(text.slice(second + 1).trim());
+  return cleanManagedBrandPrefixSuffix_v608_(text.slice(second + 1).trim());
 }
 
-function stripTrailingUnderscoreNumber_v608_(brandName) {
-  return String(brandName || '').trim().replace(/_\d+$/, '').trim();
+function cleanManagedBrandPrefixSuffix_v608_(brandName) {
+  return String(brandName || '')
+    .trim()
+    .replace(/^\d+_/, '')
+    .replace(/_\d+$/, '')
+    .trim();
 }
 
 function findHeaderIndex_v608_(headerRow, candidates) {
