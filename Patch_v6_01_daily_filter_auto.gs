@@ -1,4 +1,4 @@
-var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.10';
+var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.11';
 var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/e7ba5932687a74fd1bfe4ec6a2ef154fadf516ca/Patch_v6_01_daily_filter_auto.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_05_cleanup_manual_sheet.gs',
@@ -6,7 +6,8 @@ var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_07_dashboard_total_sent_sync.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_08_filter_brand_after_second_underscore.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_09_dashboard_brand_filter_sync.gs',
-  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_10_dashboard_force_brand_filter_sync.gs'
+  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_10_dashboard_force_brand_filter_sync.gs',
+  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_11_brand_dashboard_log_margin_vat.gs'
 ];
 
 // loader compatibility marker: function startDailyFilterCountsSchedule
