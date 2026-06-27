@@ -1,60 +1,63 @@
 /**
- * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.2
+ * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.4
  *
  * Apps Script에는 이 파일만 붙여넣고,
  * 실제 운영 코드는 GitHub의 Code.gs + Patch_v6_01_daily_filter_auto.gs를 Raw URL로 불러와 실행합니다.
  *
- * v1.2:
- * - 권한승인용 authorizeLotteonLoader 유지
- * - 필터별_상품수 매일 자동 갱신 메뉴/wrapper 추가
- * - Code.gs v6.00 뒤에 v6.01 patch 파일을 추가 로드
+ * v1.4:
+ * - GitHub 코드 연결 테스트를 최상단으로 이동
+ * - 자주 쓰는 메뉴만 상단에 유지
+ * - 점검/검수, 설정/초기화, 문제해결을 단순화해 설정/관리와 고급/복구로 정리
+ * - authorizeLotteonLoader 경량화 유지
  */
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_01_daily_filter_auto.gs';
+const LOTTEON_GITHUB_README_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/README.md';
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const mainMenu = ui.createMenu('LOTTEON 자동화');
 
   mainMenu
+    .addItem('GitHub 코드 연결 테스트', 'testGitHubRemoteCode')
+    .addSeparator()
     .addItem('① 변경사항 반영 실행', 'runPendingChangesApproval')
-    .addItem('② 필터별_상품수 갱신/이어실행', 'refreshFilterCountsFast')
+    .addItem('⑤ 대시보드만 빠른 갱신', 'refreshDashboardFastOnly')
+    .addSeparator()
+    .addItem('필터별_상품수 자동 갱신 지금 시작', 'runDailyFilterCountsOnceManual')
+    .addItem('필터별_상품수 자동 상태 확인', 'showDailyFilterCountsStatus')
+    .addSeparator()
     .addItem('③ 쿠팡재전송_로그 갱신', 'createRetransmitLogSheet')
     .addItem('④ 핵심요약+대시보드 갱신', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
-    .addItem('⑤ 대시보드만 빠른 갱신', 'refreshDashboardFastOnly')
     .addItem('⑥ 시트 정리: 운영 시트만 표시', 'showOnlyMainSheets')
     .addSeparator();
 
-  const checkMenu = ui.createMenu('점검/검수')
-    .addItem('전체 검수 리포트 생성', 'generateAuditReport')
-    .addItem('자동 갱신 상태 확인', 'showStableAutoRefreshStatus')
-    .addItem('변경감지 상태 확인', 'showChangeDetectionStatus')
-    .addItem('수동입력/API 검증 시트 갱신', 'refreshManualApiCheckOnly')
-    .addItem('필터_대시보드 갱신', 'refreshFilterDashboardFastOnly');
-
-  const setupMenu = ui.createMenu('설정/초기화')
+  const settingsMenu = ui.createMenu('설정/관리')
     .addItem('GitHub 로더 권한 승인', 'authorizeLotteonLoader')
     .addSeparator()
     .addItem('변경감지 기능 시작', 'startChangeDetectionApproval')
     .addItem('변경감지 기능 중지', 'stopChangeDetectionApproval')
-    .addItem('변경감지 플래그 초기화', 'resetChangeDetectionFlags')
-    .addItem('필터별_상품수 이어실행 초기화', 'resetFilterListResumeProgress')
     .addSeparator()
     .addItem('필터별_상품수 자동 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
     .addItem('필터별_상품수 자동 갱신 중지', 'stopDailyFilterCountsSchedule')
-    .addItem('필터별_상품수 자동 갱신 지금 시작', 'runDailyFilterCountsOnceManual')
-    .addItem('필터별_상품수 자동 상태 확인', 'showDailyFilterCountsStatus')
-    .addSeparator()
-    .addItem('자동/예약 트리거 전체 정리', 'cleanupAllAutoRefreshTriggers')
     .addSeparator()
     .addItem('API 인증값 저장', 'saveApiCredentials')
     .addItem('API 연결 테스트', 'testLotteonApiConnection')
-    .addItem('시트 복구: 전체 시트 표시', 'showAllSheets')
     .addSeparator()
-    .addItem('GitHub 코드 연결 테스트', 'testGitHubRemoteCode');
+    .addItem('시트 복구: 전체 시트 표시', 'showAllSheets');
 
-  const troubleMenu = ui.createMenu('문제해결')
+  const advancedMenu = ui.createMenu('고급/복구')
+    .addItem('전체 검수 리포트 생성', 'generateAuditReport')
+    .addItem('변경감지 상태 확인', 'showChangeDetectionStatus')
+    .addItem('변경감지 플래그 초기화', 'resetChangeDetectionFlags')
+    .addSeparator()
+    .addItem('필터별_상품수 수동 1페이지 실행', 'refreshFilterCountsFast')
+    .addItem('필터별_상품수 이어실행 초기화', 'resetFilterListResumeProgress')
+    .addItem('필터_대시보드 갱신', 'refreshFilterDashboardFastOnly')
+    .addSeparator()
+    .addItem('자동/예약 트리거 전체 정리', 'cleanupAllAutoRefreshTriggers')
+    .addSeparator()
     .addItem('K2 필터일자 진단(조회만)', 'diagnoseRetransmitLogFilterDateK2')
     .addItem('K2 날짜 직접반영(실제수정)', 'patchK2RetransmitLogDateFromApi')
     .addItem('쿠팡재전송_로그 날짜 직접패치', 'patchRetransmitLogDatesFromFilterSummary')
@@ -62,20 +65,24 @@ function onOpen() {
     .addItem('초초경량 자동 갱신 1회 실행', 'runStableAutoRefreshOnce');
 
   mainMenu
-    .addSubMenu(checkMenu)
-    .addSubMenu(setupMenu)
-    .addSubMenu(troubleMenu)
+    .addSubMenu(settingsMenu)
+    .addSubMenu(advancedMenu)
     .addToUi();
 }
 
 function authorizeLotteonLoader() {
+  const started = new Date();
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getActiveSheet();
-  const ssId = ss.getId();
-  const ssName = ss.getName();
-  const sheetName = sheet ? sheet.getName() : '';
+  const authInfo = {
+    spreadsheetName: ss.getName(),
+    spreadsheetId: ss.getId(),
+    sheetName: sheet ? sheet.getName() : '',
+    startedAt: started.toISOString()
+  };
 
-  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_AT', new Date().toISOString());
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_AT', authInfo.startedAt);
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_VERSION', 'v1.4');
   CacheService.getScriptCache().put('LOTTEON_LOADER_AUTH_TEST', 'OK', 30);
 
   const lock = LockService.getScriptLock();
@@ -86,37 +93,47 @@ function authorizeLotteonLoader() {
   }
 
   ScriptApp.getProjectTriggers();
+  let tempTriggerCreated = 'N';
+  try {
+    const tempTrigger = ScriptApp.newTrigger('__lotteonLoaderAuthNoop')
+      .timeBased()
+      .after(60 * 60 * 1000)
+      .create();
+    tempTriggerCreated = 'Y';
+    ScriptApp.deleteTrigger(tempTrigger);
+  } catch (e) {
+    Logger.log('임시 트리거 생성/삭제 중 경고: ' + e);
+  }
 
-  const codeResponse = UrlFetchApp.fetch(LOTTEON_GITHUB_CODE_URL + '?auth_test=' + new Date().getTime(), {
+  const readmeResponse = UrlFetchApp.fetch(LOTTEON_GITHUB_README_URL + '?auth_test=' + new Date().getTime(), {
     method: 'get',
     muteHttpExceptions: true,
     followRedirects: true
   });
-  const patchResponse = UrlFetchApp.fetch(LOTTEON_GITHUB_PATCH_URL + '?auth_test=' + new Date().getTime(), {
-    method: 'get',
-    muteHttpExceptions: true,
-    followRedirects: true
-  });
-
-  const code = codeResponse.getResponseCode();
-  const patch = patchResponse.getResponseCode();
-  if (code < 200 || code >= 300) {
-    throw new Error('GitHub Code.gs 연결 실패 HTTP ' + code + ': ' + codeResponse.getContentText().slice(0, 500));
-  }
-  if (patch < 200 || patch >= 300) {
-    throw new Error('GitHub Patch_v6_01 연결 실패 HTTP ' + patch + ': ' + patchResponse.getContentText().slice(0, 500));
+  const readmeCode = String(readmeResponse.getResponseCode());
+  if (Number(readmeCode) < 200 || Number(readmeCode) >= 300) {
+    throw new Error('README 연결 실패 HTTP ' + readmeCode + ': ' + readmeResponse.getContentText().slice(0, 300));
   }
 
-  SpreadsheetApp.getUi().alert(
-    'GitHub 로더 권한 승인 완료\n\n' +
-    '스프레드시트: ' + ssName + '\n' +
-    '스프레드시트 ID: ' + ssId + '\n' +
-    '현재 시트: ' + sheetName + '\n' +
-    'Code.gs 연결: HTTP ' + code + '\n' +
-    'Patch_v6_01 연결: HTTP ' + patch + '\n\n' +
-    '이제 GitHub 코드 연결 테스트를 실행하세요.'
-  );
+  const msg =
+    'GitHub 로더 권한 승인 완료' +
+    ' / loader=v1.4' +
+    ' / spreadsheet=' + authInfo.spreadsheetName +
+    ' / sheet=' + authInfo.sheetName +
+    ' / readmeHTTP=' + readmeCode +
+    ' / tempTrigger=' + tempTriggerCreated;
+
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_RESULT', msg);
+  Logger.log(msg);
+
+  try {
+    ss.toast('GitHub 로더 권한 승인 완료 v1.4', 'LOTTEON 자동화', 5);
+  } catch (e) {}
+
+  return msg;
 }
+
+function __lotteonLoaderAuthNoop() {}
 
 function fetchGitHubRemoteCode_() {
   const ts = new Date().getTime();
@@ -144,10 +161,10 @@ function fetchGitHubRemoteCode_() {
   const patchText = patchResponse.getContentText('UTF-8');
 
   if (patchCode < 200 || patchCode >= 300) {
-    throw new Error('GitHub Patch_v6_01 로드 실패 HTTP ' + patchCode + ': ' + patchText.slice(0, 500));
+    throw new Error('GitHub Patch 로드 실패 HTTP ' + patchCode + ': ' + patchText.slice(0, 500));
   }
   if (!patchText || patchText.indexOf('function startDailyFilterCountsSchedule') < 0) {
-    throw new Error('GitHub Patch_v6_01 내용이 올바르지 않습니다. startDailyFilterCountsSchedule 함수를 찾지 못했습니다.');
+    throw new Error('GitHub Patch 내용이 올바르지 않습니다. startDailyFilterCountsSchedule marker를 찾지 못했습니다.');
   }
 
   return text + '\n\n' + patchText;
@@ -165,14 +182,14 @@ function runRemoteFunction_(functionName, args) {
 
 function testGitHubRemoteCode() {
   const code = fetchGitHubRemoteCode_();
-  const versionMatch = code.match(/v\d+\.\d+[^\n]*/i);
+  const versionMatch = code.match(/LOTTEON_PATCH_BOOTSTRAP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/) || code.match(/v\d+\.\d+(?:\.\d+)?[^\n]*/i);
   SpreadsheetApp.getUi().alert(
     'GitHub 코드 연결 성공\n\n' +
     'Code.gs Raw URL:\n' + LOTTEON_GITHUB_CODE_URL + '\n\n' +
     'Patch Raw URL:\n' + LOTTEON_GITHUB_PATCH_URL + '\n\n' +
     '로드 크기: ' + code.length.toLocaleString() + '자\n' +
-    '버전 추정: ' + (versionMatch ? versionMatch[0] : '확인 필요') + '\n' +
-    'v6.01 자동 필터 갱신 patch: 포함'
+    '버전 추정: ' + (versionMatch ? (versionMatch[1] || versionMatch[0]) : '확인 필요') + '\n' +
+    '현재 구조: Code.gs + v6.05 patch bootstrap 포함'
   );
 }
 
