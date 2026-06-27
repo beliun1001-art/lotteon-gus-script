@@ -1,14 +1,13 @@
 /**
- * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.4
+ * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.5
  *
  * Apps Script에는 이 파일만 붙여넣고,
  * 실제 운영 코드는 GitHub의 Code.gs + Patch_v6_01_daily_filter_auto.gs를 Raw URL로 불러와 실행합니다.
  *
- * v1.4:
- * - GitHub 코드 연결 테스트를 최상단으로 이동
- * - 자주 쓰는 메뉴만 상단에 유지
- * - 점검/검수, 설정/초기화, 문제해결을 단순화해 설정/관리와 고급/복구로 정리
- * - authorizeLotteonLoader 경량화 유지
+ * v1.5:
+ * - v1.4 메뉴 단순화 유지
+ * - 고급/복구에서 K2 전용/과거 직접패치/초초경량 메뉴 숨김
+ * - 실행 wrapper는 유지해 기존 트리거/과거 호출 호환성 보호
  */
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
@@ -56,13 +55,7 @@ function onOpen() {
     .addItem('필터별_상품수 이어실행 초기화', 'resetFilterListResumeProgress')
     .addItem('필터_대시보드 갱신', 'refreshFilterDashboardFastOnly')
     .addSeparator()
-    .addItem('자동/예약 트리거 전체 정리', 'cleanupAllAutoRefreshTriggers')
-    .addSeparator()
-    .addItem('K2 필터일자 진단(조회만)', 'diagnoseRetransmitLogFilterDateK2')
-    .addItem('K2 날짜 직접반영(실제수정)', 'patchK2RetransmitLogDateFromApi')
-    .addItem('쿠팡재전송_로그 날짜 직접패치', 'patchRetransmitLogDatesFromFilterSummary')
-    .addItem('쿠팡재전송_로그 미래날짜 정리', 'cleanFutureDatesInCoupangWorkLog')
-    .addItem('초초경량 자동 갱신 1회 실행', 'runStableAutoRefreshOnce');
+    .addItem('자동/예약 트리거 전체 정리', 'cleanupAllAutoRefreshTriggers');
 
   mainMenu
     .addSubMenu(settingsMenu)
@@ -82,7 +75,7 @@ function authorizeLotteonLoader() {
   };
 
   PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_AT', authInfo.startedAt);
-  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_VERSION', 'v1.4');
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_LOADER_AUTH_VERSION', 'v1.5');
   CacheService.getScriptCache().put('LOTTEON_LOADER_AUTH_TEST', 'OK', 30);
 
   const lock = LockService.getScriptLock();
@@ -117,7 +110,7 @@ function authorizeLotteonLoader() {
 
   const msg =
     'GitHub 로더 권한 승인 완료' +
-    ' / loader=v1.4' +
+    ' / loader=v1.5' +
     ' / spreadsheet=' + authInfo.spreadsheetName +
     ' / sheet=' + authInfo.sheetName +
     ' / readmeHTTP=' + readmeCode +
@@ -127,7 +120,7 @@ function authorizeLotteonLoader() {
   Logger.log(msg);
 
   try {
-    ss.toast('GitHub 로더 권한 승인 완료 v1.4', 'LOTTEON 자동화', 5);
+    ss.toast('GitHub 로더 권한 승인 완료 v1.5', 'LOTTEON 자동화', 5);
   } catch (e) {}
 
   return msg;
@@ -224,7 +217,7 @@ function saveApiCredentials() { return runRemoteFunction_('saveApiCredentials');
 function testLotteonApiConnection() { return runRemoteFunction_('testLotteonApiConnection'); }
 function showAllSheets() { return runRemoteFunction_('showAllSheets'); }
 
-// 문제해결 wrapper
+// 과거/복구용 wrapper는 메뉴에서 숨겼지만 기존 트리거/수동 호출 호환성을 위해 유지
 function diagnoseRetransmitLogFilterDateK2() { return runRemoteFunction_('diagnoseRetransmitLogFilterDateK2'); }
 function patchK2RetransmitLogDateFromApi() { return runRemoteFunction_('patchK2RetransmitLogDateFromApi'); }
 function patchRetransmitLogDatesFromFilterSummary() { return runRemoteFunction_('patchRetransmitLogDatesFromFilterSummary'); }
