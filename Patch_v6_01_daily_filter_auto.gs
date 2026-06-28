@@ -1,4 +1,4 @@
-var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.15';
+var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.16';
 var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/e7ba5932687a74fd1bfe4ec6a2ef154fadf516ca/Patch_v6_01_daily_filter_auto.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_05_cleanup_manual_sheet.gs',
@@ -11,7 +11,8 @@ var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_12_profit_logic_settlement_basis.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_13_net_sales_vat_breakdown.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_14_purchase_and_year_format_fix.gs',
-  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_15_dashboard_header_style_auto.gs'
+  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_15_dashboard_header_style_auto.gs',
+  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_16_unsettled_estimated_profit.gs'
 ];
 
 // loader compatibility marker: function startDailyFilterCountsSchedule
