@@ -19,7 +19,7 @@ var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_20_fast_dashboard_timeout_guard.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_21_vat_input_credit_profit.gs',
   'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_22_fast_dashboard_skip_vat_reports.gs',
-  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_23_column_width_batch_and_display_format.gs'
+  'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_23_column_width_batch_display_standard.gs'
 ];
 
 // loader compatibility marker: function startDailyFilterCountsSchedule
