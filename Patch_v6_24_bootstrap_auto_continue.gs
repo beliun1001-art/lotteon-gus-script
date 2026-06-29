@@ -1,4 +1,4 @@
-var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.33';
+var LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.34';
 var LOTTEON_PATCH_BASE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/';
 var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'Patch_v6_05_cleanup_manual_sheet.gs',
@@ -29,7 +29,8 @@ var LOTTEON_PATCH_BOOTSTRAP_URLS = [
   'Patch_v6_30_dashboard_column_width_hard_fix.gs',
   'Patch_v6_31_dashboard_final_alignment_width_fix.gs',
   'Patch_v6_32_profit_rate_recalculate_fix.gs',
-  'Patch_v6_33_percent_one_decimal_all_sheets.gs'
+  'Patch_v6_33_percent_one_decimal_all_sheets.gs',
+  'Patch_v6_34_brand_margin_rate_hard_fix.gs'
 ];
 
 for (var LOTTEON_PATCH_BOOTSTRAP_I = 0; LOTTEON_PATCH_BOOTSTRAP_I < LOTTEON_PATCH_BOOTSTRAP_URLS.length; LOTTEON_PATCH_BOOTSTRAP_I++) {
