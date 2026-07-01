@@ -1,13 +1,14 @@
 /**
- * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.9
+ * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.10
  *
- * v1.9 핵심:
+ * v1.10 핵심:
  * - v1.8 ScriptApp 권한 포함 구조 유지
  * - LOTTEON 자동화 / LOTTEON 서식 메뉴 유지
  * - 누락된 필터별_상품수 매일 자동 갱신 시작/중지 메뉴 복구
  * - GitHub patch bootstrap은 Patch_v6_24_bootstrap_auto_continue.gs 사용
- * - v6.49 이상 GitHub patch를 자동 로드
- * - LOTTEON 서식 메뉴에 금액/백분율 전용 표시 형식 메뉴 추가
+ * - v6.53 이상 GitHub patch를 자동 로드
+ * - LOTTEON 서식 메뉴에 금액/백분율 전용 표시 형식 메뉴 유지
+ * - 운영 핵심 10개 시트만 표시/불필요 시트 삭제 메뉴명 반영
  *
  * 사용 방법:
  * - Apps Script의 기존 loader 전체를 이 파일 전체로 교체합니다.
@@ -17,7 +18,7 @@
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
-const LOTTEON_LOADER_VERSION = 'v1.9';
+const LOTTEON_LOADER_VERSION = 'v1.10';
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -34,7 +35,7 @@ function onOpen() {
     .addSeparator()
     .addItem('③ 쿠팡재전송_로그 갱신', 'createRetransmitLogSheet')
     .addItem('④ 핵심요약+대시보드 갱신', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
-    .addItem('⑥ 시트 정리: 운영 시트만 표시', 'showOperationSheetsOnly')
+    .addItem('⑥ 운영 핵심 10개만 표시/불필요 삭제', 'showOperationSheetsOnly')
     .addSeparator()
     .addSubMenu(
       ui.createMenu('설정/관리')
@@ -52,6 +53,7 @@ function onOpen() {
     .addSubMenu(
       ui.createMenu('고급/복구')
         .addItem('부가세 자료 생성/이어실행', 'generateVatReportsFullSeparated_v622')
+        .addItem('운영 핵심 10개만 표시/불필요 삭제', 'showOperationSheetsOnly')
         .addItem('시트 복구: 전체 시트 표시', 'showAllSheets')
         .addItem('API 인증값 저장', 'saveApiCredentials')
         .addItem('API 연결 테스트', 'testApiConnection')
@@ -115,7 +117,7 @@ function testLotteonGitHubConnection() {
 function clearLotteonGitHubCodeCache() {
   ['LOTTEON_REMOTE_CODE_BUNDLE_V14','LOTTEON_REMOTE_CODE_BUNDLE_V13','LOTTEON_REMOTE_CODE_BUNDLE'].forEach(function(k){ try { CacheService.getScriptCache().remove(k); } catch(e) {} });
   PropertiesService.getScriptProperties().deleteProperty('LOTTEON_REMOTE_LAST_VERSION');
-  SpreadsheetApp.getUi().alert('GitHub 코드 캐시를 초기화했습니다.\n\nv1.9는 대용량 코드를 캐시에 저장하지 않습니다.');
+  SpreadsheetApp.getUi().alert('GitHub 코드 캐시를 초기화했습니다.\n\nv1.10은 대용량 코드를 캐시에 저장하지 않습니다.');
 }
 
 function loadLotteonRemoteBundle_() {
@@ -163,7 +165,7 @@ function startDailyFilterCountsSchedule() { return runRemoteFunctionByName_('sta
 function stopDailyFilterCountsSchedule() { return runRemoteFunctionByName_('stopDailyFilterCountsSchedule'); }
 function createRetransmitLogSheet() { return runRemoteFunctionByName_('createRetransmitLogSheet'); }
 function refreshCoreSummaryAndDashboardWithRetransmitLogDates() { return runRemoteFunctionByName_('refreshCoreSummaryAndDashboardWithRetransmitLogDates'); }
-function showOperationSheetsOnly() { return runRemoteFirstAvailable_(['showOperationSheetsOnly', 'showOnlyOperationSheets', 'hideNonOperationSheets']); }
+function showOperationSheetsOnly() { return runRemoteFirstAvailable_(['cleanupOperationSheets_v653', 'showOperationSheetsOnly', 'showOnlyOperationSheets', 'hideNonOperationSheets']); }
 function showAllSheets() { return runRemoteFirstAvailable_(['showAllSheets', 'restoreAllSheetsVisible']); }
 function saveApiCredentials() { return runRemoteFirstAvailable_(['saveApiCredentials', 'saveApiCredentialsMenu']); }
 function testApiConnection() { return runRemoteFirstAvailable_(['testApiConnection', 'testApiConnectionMenu']); }
