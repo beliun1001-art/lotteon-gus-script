@@ -1,12 +1,13 @@
 /**
- * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.8
+ * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.9
  *
- * v1.8 핵심:
- * - v1.7 ScriptApp 권한 포함 구조 유지
+ * v1.9 핵심:
+ * - v1.8 ScriptApp 권한 포함 구조 유지
  * - LOTTEON 자동화 / LOTTEON 서식 메뉴 유지
  * - 누락된 필터별_상품수 매일 자동 갱신 시작/중지 메뉴 복구
  * - GitHub patch bootstrap은 Patch_v6_24_bootstrap_auto_continue.gs 사용
- * - v6.28 이상 GitHub patch를 자동 로드
+ * - v6.49 이상 GitHub patch를 자동 로드
+ * - LOTTEON 서식 메뉴에 금액/백분율 전용 표시 형식 메뉴 추가
  *
  * 사용 방법:
  * - Apps Script의 기존 loader 전체를 이 파일 전체로 교체합니다.
@@ -16,7 +17,7 @@
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
-const LOTTEON_LOADER_VERSION = 'v1.8';
+const LOTTEON_LOADER_VERSION = 'v1.9';
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -61,6 +62,9 @@ function onOpen() {
     .addItem('열너비 자동조정 시작/이어실행', 'runColumnWidthAutoAdjustStep_v623')
     .addItem('열너비 자동조정 상태 확인', 'showColumnWidthAutoAdjustStatus_v623')
     .addItem('열너비 자동조정 초기화', 'resetColumnWidthAutoAdjust_v623')
+    .addSeparator()
+    .addItem('금액 1,000단위 쉼표 적용', 'applyAmountThousandsFormat_v649')
+    .addItem('백분율 % 적용', 'applyPercentOneDecimalFormat_v649')
     .addSeparator()
     .addItem('표시서식만 빠른 정리', 'applyDisplayStandardsOnlyFast_v623')
     .addToUi();
@@ -111,7 +115,7 @@ function testLotteonGitHubConnection() {
 function clearLotteonGitHubCodeCache() {
   ['LOTTEON_REMOTE_CODE_BUNDLE_V14','LOTTEON_REMOTE_CODE_BUNDLE_V13','LOTTEON_REMOTE_CODE_BUNDLE'].forEach(function(k){ try { CacheService.getScriptCache().remove(k); } catch(e) {} });
   PropertiesService.getScriptProperties().deleteProperty('LOTTEON_REMOTE_LAST_VERSION');
-  SpreadsheetApp.getUi().alert('GitHub 코드 캐시를 초기화했습니다.\n\nv1.8은 대용량 코드를 캐시에 저장하지 않습니다.');
+  SpreadsheetApp.getUi().alert('GitHub 코드 캐시를 초기화했습니다.\n\nv1.9는 대용량 코드를 캐시에 저장하지 않습니다.');
 }
 
 function loadLotteonRemoteBundle_() {
@@ -171,4 +175,6 @@ function generateVatReportsFullSeparated_v622() { return runRemoteFunctionByName
 function runColumnWidthAutoAdjustStep_v623() { return runRemoteFunctionByName_('runColumnWidthAutoAdjustStep_v623'); }
 function showColumnWidthAutoAdjustStatus_v623() { return runRemoteFunctionByName_('showColumnWidthAutoAdjustStatus_v623'); }
 function resetColumnWidthAutoAdjust_v623() { return runRemoteFunctionByName_('resetColumnWidthAutoAdjust_v623'); }
+function applyAmountThousandsFormat_v649() { return runRemoteFunctionByName_('applyAmountThousandsFormat_v649'); }
+function applyPercentOneDecimalFormat_v649() { return runRemoteFunctionByName_('applyPercentOneDecimalFormat_v649'); }
 function applyDisplayStandardsOnlyFast_v623() { return runRemoteFunctionByName_('applyDisplayStandardsOnlyFast_v623'); }
