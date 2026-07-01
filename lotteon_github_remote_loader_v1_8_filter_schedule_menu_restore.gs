@@ -50,7 +50,7 @@ function onOpen() {
     )
     .addSubMenu(
       ui.createMenu('고급/복구')
-        .addItem('부가세 신고자료 생성(무거움)', 'generateVatReportsFullSeparated_v622')
+        .addItem('부가세 자료 생성/이어실행', 'generateVatReportsFullSeparated_v622')
         .addItem('시트 복구: 전체 시트 표시', 'showAllSheets')
         .addItem('API 인증값 저장', 'saveApiCredentials')
         .addItem('API 연결 테스트', 'testApiConnection')
