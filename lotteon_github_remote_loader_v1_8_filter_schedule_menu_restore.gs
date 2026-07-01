@@ -59,9 +59,9 @@ function onOpen() {
     .addToUi();
 
   ui.createMenu('LOTTEON 서식')
-    .addItem('열너비 자동조정 시작/이어실행', 'runColumnWidthAutoAdjustStep_v623')
-    .addItem('열너비 자동조정 상태 확인', 'showColumnWidthAutoAdjustStatus_v623')
-    .addItem('열너비 자동조정 초기화', 'resetColumnWidthAutoAdjust_v623')
+    .addItem('열너비 안전조정 시작/이어실행', 'runColumnWidthAutoAdjustStep_v623')
+    .addItem('열너비 안전조정 상태 확인', 'showColumnWidthAutoAdjustStatus_v623')
+    .addItem('열너비 안전조정 초기화', 'resetColumnWidthAutoAdjust_v623')
     .addSeparator()
     .addItem('금액 1,000단위 쉼표 적용', 'applyAmountThousandsFormat_v649')
     .addItem('백분율 % 적용', 'applyPercentOneDecimalFormat_v649')
