@@ -155,7 +155,7 @@ finishVatSummaries_v648_ = function(ss, state) {
 };
 
 function buildSheetAmountValidation_v654_(ss) {
-  var detail = readTableAmounts_v628_(ss.getSheetByName('부가세_신고자료'));
+  var detail = readTableAmounts_v654_(ss.getSheetByName('부가세_신고자료'));
   var headers = ['시트명','기준 순수매출액','시트 순수매출액','매출 차이','기준 매입금액','시트 매입금액','매입 차이','기준 정산기준금액','시트 정산기준금액','정산 차이','판정','메모'];
   var targets = [
     ['대시보드','summary'],
@@ -165,8 +165,8 @@ function buildSheetAmountValidation_v654_(ss) {
   ];
   var rows = targets.map(function(target) {
     var actual = target[1] === 'summary'
-      ? readDashboardSummaryAmounts_v628_(ss.getSheetByName(target[0]))
-      : readTableAmounts_v628_(ss.getSheetByName(target[0]));
+      ? readDashboardSummaryAmounts_v654_(ss.getSheetByName(target[0]))
+      : readTableAmounts_v654_(ss.getSheetByName(target[0]));
     var salesDiff = Math.round(detail.sales - actual.sales);
     var purchaseDiff = Math.round(detail.purchase - actual.purchase);
     var settlementDiff = Math.round(detail.settlement - actual.settlement);
@@ -179,4 +179,45 @@ function buildSheetAmountValidation_v654_(ss) {
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setBackground('#d9eaf7').setFontWeight('bold');
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   sheet.setFrozenRows(1);
+}
+
+function readDashboardSummaryAmounts_v654_(sheet) {
+  var out = { sales: 0, purchase: 0, settlement: 0, memo: '' };
+  if (!sheet || sheet.getLastRow() < 1) { out.memo = '시트 없음/데이터 없음'; return out; }
+  var values = sheet.getDataRange().getValues();
+  values.forEach(function(row) {
+    var item = normalizeAmountHeader_v654_(row[1]);
+    if (item === '순수매출액') out.sales = amountNumber_v654_(row[2]);
+    if (item === '매입금액') out.purchase = amountNumber_v654_(row[2]);
+    if (item === '정산기준금액') out.settlement = amountNumber_v654_(row[2]);
+  });
+  return out;
+}
+
+function readTableAmounts_v654_(sheet) {
+  var out = { sales: 0, purchase: 0, settlement: 0, memo: '' };
+  if (!sheet || sheet.getLastRow() < 2) { out.memo = '시트 없음/데이터 없음'; return out; }
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0].map(normalizeAmountHeader_v654_);
+  var salesIndex = headers.indexOf('순수매출액');
+  var purchaseIndex = headers.indexOf('매입금액');
+  var settlementIndex = headers.indexOf('정산기준금액');
+  for (var row = 1; row < values.length; row++) {
+    if (salesIndex >= 0) out.sales += amountNumber_v654_(values[row][salesIndex]);
+    if (purchaseIndex >= 0) out.purchase += amountNumber_v654_(values[row][purchaseIndex]);
+    if (settlementIndex >= 0) out.settlement += amountNumber_v654_(values[row][settlementIndex]);
+  }
+  out.memo = 'headers sales=' + salesIndex + ' purchase=' + purchaseIndex + ' settlement=' + settlementIndex;
+  return out;
+}
+
+function normalizeAmountHeader_v654_(value) {
+  return String(value == null ? '' : value).replace(/\n/g, '').replace(/\s+/g, '').trim();
+}
+
+function amountNumber_v654_(value) {
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  var normalized = String(value == null ? '' : value).replace(/[원,\s]/g, '').trim();
+  var number = Number(normalized);
+  return isNaN(number) ? 0 : number;
 }
