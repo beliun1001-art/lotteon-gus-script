@@ -30,7 +30,7 @@ function onOpen() {
     .addSeparator()
     .addItem('필터별_상품수 안전 갱신 시작/이어실행', 'runDailyFilterCountsOnceManual')
     .addItem('필터별_상품수 안전 갱신 상태 확인', 'showDailyFilterCountsStatus')
-    .addItem('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 珥덇린??, 'resetDailyFilterCountsSafeState')
+    .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
     .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
     .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
     .addSeparator()
@@ -45,7 +45,7 @@ function onOpen() {
         .addItem('GitHub 肄붾뱶 罹먯떆 珥덇린??, 'clearLotteonGitHubCodeCache')
         .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
         .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
-        .addItem('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 珥덇린??, 'resetDailyFilterCountsSafeState')
+        .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
         .addSeparator()
         .addItem('蹂寃쎄컧吏 湲곕뒫 ?쒖옉', 'startChangeDetection')
         .addItem('蹂寃쎄컧吏 湲곕뒫 以묒?', 'stopChangeDetection')
@@ -174,7 +174,7 @@ function startChangeDetection() { return runRemoteFirstAvailable_(['startChangeD
 function stopChangeDetection() { return runRemoteFirstAvailable_(['stopChangeDetection', 'stopChangeDetectionTrigger']); }
 function resetChangeDetectionFlags() { return runRemoteFirstAvailable_(['resetChangeDetectionFlags', 'resetChangeDetectionFlag']); }
 function resetFilterListResumeState() { return runRemoteFirstAvailable_(['resetFilterListResumeState', 'resetFilterListResume']); }
-function resetDailyFilterCountsSafeState() { return runRemoteFunctionByName_('resetDailyFilterCountsSafeState'); }
+    .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
 function generateVatReportsFullSeparated_v622() { return runRemoteFunctionByName_('generateVatReportsFullSeparated_v622'); }
 function runColumnWidthAutoAdjustStep_v623() { return runRemoteFunctionByName_('runColumnWidthAutoAdjustStep_v623'); }
 function showColumnWidthAutoAdjustStatus_v623() { return runRemoteFunctionByName_('showColumnWidthAutoAdjustStatus_v623'); }
