@@ -12,6 +12,7 @@
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
+const LOTTEON_FILTER_COUNT_LIGHTWEIGHT_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/FilterCountLightweight_v6_56.gs';
 const LOTTEON_GITHUB_README_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/README.md';
 
 function onOpen() {
@@ -174,6 +175,15 @@ function runRemoteFunction_(functionName, args) {
   return eval(code + '\n' + safeName + '.apply(null, args);');
 }
 
+function runFilterCountLightweightFunction_(functionName) {
+  const started = new Date().getTime();
+  const response = UrlFetchApp.fetch(LOTTEON_FILTER_COUNT_LIGHTWEIGHT_URL + '?ts=' + started, { method: 'get', muteHttpExceptions: true, followRedirects: true });
+  const text = response.getContentText('UTF-8');
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw new Error('FilterCountLightweight load failed HTTP ' + response.getResponseCode());
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_FILTER_COUNT_LIGHTWEIGHT_LOAD_METRICS', JSON.stringify({ remoteFetchFiles: 1, runnerEntryMs: new Date().getTime() - started, at: new Date().toISOString() }));
+  return eval(text + '\n' + functionName + '();');
+}
+
 function testGitHubRemoteCode() {
   const code = fetchGitHubRemoteCode_();
   const versionMatch = code.match(/LOTTEON_PATCH_BOOTSTRAP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/) || code.match(/v\d+\.\d+(?:\.\d+)?[^\n]*/i);
@@ -207,13 +217,13 @@ function startChangeDetectionApproval() { return runRemoteFunction_('startChange
 function stopChangeDetectionApproval() { return runRemoteFunction_('stopChangeDetectionApproval'); }
 function resetChangeDetectionFlags() { return runRemoteFunction_('resetChangeDetectionFlags'); }
 function resetFilterListResumeProgress() { return runRemoteFunction_('resetFilterListResumeProgress'); }
-function resetDailyFilterCountsSafeState() { return runRemoteFunction_('resetDailyFilterCountsSafeState'); }
-function startDailyFilterCountsSchedule() { return runRemoteFunction_('startDailyFilterCountsSchedule'); }
-function stopDailyFilterCountsSchedule() { return runRemoteFunction_('stopDailyFilterCountsSchedule'); }
-function runDailyFilterCountsOnceManual() { return runRemoteFunction_('runDailyFilterCountsOnceManual'); }
-function showDailyFilterCountsStatus() { return runRemoteFunction_('showDailyFilterCountsStatus'); }
-function runDailyFilterCountsStart() { return runRemoteFunction_('runDailyFilterCountsStart'); }
-function runDailyFilterCountsContinue() { return runRemoteFunction_('runDailyFilterCountsContinue'); }
+function resetDailyFilterCountsSafeState() { return runFilterCountLightweightFunction_('resetDailyFilterCountsSafeState'); }
+function startDailyFilterCountsSchedule() { return runFilterCountLightweightFunction_('startDailyFilterCountsSchedule'); }
+function stopDailyFilterCountsSchedule() { return runFilterCountLightweightFunction_('stopDailyFilterCountsSchedule'); }
+function runDailyFilterCountsOnceManual() { return runFilterCountLightweightFunction_('runDailyFilterCountsOnceManual'); }
+function showDailyFilterCountsStatus() { return runFilterCountLightweightFunction_('showDailyFilterCountsStatus'); }
+function runDailyFilterCountsStart() { return runFilterCountLightweightFunction_('runDailyFilterCountsStart'); }
+function runDailyFilterCountsContinue() { return runFilterCountLightweightFunction_('runDailyFilterCountsContinue'); }
 function cleanupAllAutoRefreshTriggers() { return runRemoteFunction_('cleanupAllAutoRefreshTriggers'); }
 function saveApiCredentials() { return runRemoteFunction_('saveApiCredentials'); }
 function testLotteonApiConnection() { return runRemoteFunction_('testLotteonApiConnection'); }
