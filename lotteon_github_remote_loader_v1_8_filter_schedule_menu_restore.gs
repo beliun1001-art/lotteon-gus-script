@@ -1,19 +1,19 @@
 /**
  * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.11
  *
- * v1.10 ?듭떖:
- * - v1.8 ScriptApp 沅뚰븳 ?ы븿 援ъ“ ?좎?
- * - LOTTEON ?먮룞??/ LOTTEON ?쒖떇 硫붾돱 ?좎?
- * - ?꾨씫???꾪꽣蹂??곹뭹??留ㅼ씪 ?먮룞 媛깆떊 ?쒖옉/以묒? 硫붾돱 蹂듦뎄
- * - GitHub patch bootstrap? Patch_v6_24_bootstrap_auto_continue.gs ?ъ슜
- * - v6.53 ?댁긽 GitHub patch瑜??먮룞 濡쒕뱶
- * - LOTTEON ?쒖떇 硫붾돱??湲덉븸/諛깅텇???꾩슜 ?쒖떆 ?뺤떇 硫붾돱 ?좎?
- * - ?댁쁺 ?듭떖 10媛??쒗듃留??쒖떆/遺덊븘???쒗듃 ??젣 硫붾돱紐?諛섏쁺
+ * v1.10 핵심:
+ * - v1.8 ScriptApp 권한 포함 구조 유지
+ * - LOTTEON 자동화 / LOTTEON 서식 메뉴 유지
+ * - 누락된 필터별_상품수 매일 자동 갱신 시작/중지 메뉴 복구
+ * - GitHub patch bootstrap은 Patch_v6_24_bootstrap_auto_continue.gs 사용
+ * - v6.53 이상 GitHub patch를 자동 로드
+ * - LOTTEON 서식 메뉴에 금액/백분율 전용 표시 형식 메뉴 유지
+ * - 운영 핵심 10개 시트만 표시/불필요 시트 삭제 메뉴명 반영
  *
- * ?ъ슜 諛⑸쾿:
- * - Apps Script??湲곗〈 loader ?꾩껜瑜????뚯씪 ?꾩껜濡?援먯껜?⑸땲??
- * - ??????쒗듃瑜??덈줈怨좎묠?⑸땲??
- * - LOTTEON ?먮룞?????ㅼ젙/愿由???GitHub 濡쒕뜑 沅뚰븳 ?뱀씤????踰??ㅽ뻾?⑸땲??
+ * 사용 방법:
+ * - Apps Script의 기존 loader 전체를 이 파일 전체로 교체합니다.
+ * - 저장 후 시트를 새로고침합니다.
+ * - LOTTEON 자동화 → 설정/관리 → GitHub 로더 권한 승인을 한 번 실행합니다.
  */
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
@@ -22,11 +22,11 @@ const LOTTEON_LOADER_VERSION = 'v1.11';
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('LOTTEON ?먮룞??)
-    .addItem('GitHub 肄붾뱶 ?곌껐 ?뚯뒪??, 'testLotteonGitHubConnection')
+  ui.createMenu('LOTTEON 자동화')
+    .addItem('GitHub 코드 연결 테스트', 'testLotteonGitHubConnection')
     .addSeparator()
-    .addItem('??蹂寃쎌궗??諛섏쁺 ?ㅽ뻾', 'runPendingChangesApproval')
-    .addItem('????쒕낫?쒕쭔 鍮좊Ⅸ 媛깆떊', 'refreshDashboardFastOnly')
+    .addItem('① 변경사항 반영 실행', 'runPendingChangesApproval')
+    .addItem('⑤ 대시보드만 빠른 갱신', 'refreshDashboardFastOnly')
     .addSeparator()
     .addItem('필터별_상품수 안전 갱신 시작/이어실행', 'runDailyFilterCountsOnceManual')
     .addItem('필터별_상품수 안전 갱신 상태 확인', 'showDailyFilterCountsStatus')
@@ -34,42 +34,42 @@ function onOpen() {
     .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
     .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
     .addSeparator()
-    .addItem('??荑좏뙜?ъ쟾??濡쒓렇 媛깆떊', 'createRetransmitLogSheet')
-    .addItem('???듭떖?붿빟+??쒕낫??媛깆떊', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
-    .addItem('???댁쁺 ?듭떖 10媛쒕쭔 ?쒖떆/遺덊븘????젣', 'showOperationSheetsOnly')
+    .addItem('③ 쿠팡재전송_로그 갱신', 'createRetransmitLogSheet')
+    .addItem('④ 핵심요약+대시보드 갱신', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
+    .addItem('⑥ 운영 핵심 10개만 표시/불필요 삭제', 'showOperationSheetsOnly')
     .addSeparator()
     .addSubMenu(
-      ui.createMenu('?ㅼ젙/愿由?)
-        .addItem('GitHub 濡쒕뜑 沅뚰븳 ?뱀씤', 'authorizeLotteonLoader')
-        .addItem('ScriptApp ?몃━嫄?沅뚰븳 ?뺤씤', 'authorizeLotteonScriptAppScope')
-        .addItem('GitHub 肄붾뱶 罹먯떆 珥덇린??, 'clearLotteonGitHubCodeCache')
+      ui.createMenu('설정/관리')
+        .addItem('GitHub 로더 권한 승인', 'authorizeLotteonLoader')
+        .addItem('ScriptApp 트리거 권한 확인', 'authorizeLotteonScriptAppScope')
+        .addItem('GitHub 코드 캐시 초기화', 'clearLotteonGitHubCodeCache')
         .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
         .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
         .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
         .addSeparator()
-        .addItem('蹂寃쎄컧吏 湲곕뒫 ?쒖옉', 'startChangeDetection')
-        .addItem('蹂寃쎄컧吏 湲곕뒫 以묒?', 'stopChangeDetection')
-        .addItem('蹂寃쎄컧吏 ?뚮옒洹?珥덇린??, 'resetChangeDetectionFlags')
+        .addItem('변경감지 기능 시작', 'startChangeDetection')
+        .addItem('변경감지 기능 중지', 'stopChangeDetection')
+        .addItem('변경감지 플래그 초기화', 'resetChangeDetectionFlags')
     )
     .addSubMenu(
-      ui.createMenu('怨좉툒/蹂듦뎄')
-        .addItem('遺媛???먮즺 ?앹꽦/?댁뼱?ㅽ뻾', 'generateVatReportsFullSeparated_v622')
-        .addItem('?댁쁺 ?듭떖 10媛쒕쭔 ?쒖떆/遺덊븘????젣', 'showOperationSheetsOnly')
-        .addItem('?쒗듃 蹂듦뎄: ?꾩껜 ?쒗듃 ?쒖떆', 'showAllSheets')
-        .addItem('API ?몄쬆媛????, 'saveApiCredentials')
-        .addItem('API ?곌껐 ?뚯뒪??, 'testApiConnection')
+      ui.createMenu('고급/복구')
+        .addItem('부가세 자료 생성/이어실행', 'generateVatReportsFullSeparated_v622')
+        .addItem('운영 핵심 10개만 표시/불필요 삭제', 'showOperationSheetsOnly')
+        .addItem('시트 복구: 전체 시트 표시', 'showAllSheets')
+        .addItem('API 인증값 저장', 'saveApiCredentials')
+        .addItem('API 연결 테스트', 'testApiConnection')
     )
     .addToUi();
 
-  ui.createMenu('LOTTEON ?쒖떇')
-    .addItem('?대꼫鍮??덉쟾議곗젙 ?쒖옉/?댁뼱?ㅽ뻾', 'runColumnWidthAutoAdjustStep_v623')
-    .addItem('?대꼫鍮??덉쟾議곗젙 ?곹깭 ?뺤씤', 'showColumnWidthAutoAdjustStatus_v623')
-    .addItem('?대꼫鍮??덉쟾議곗젙 珥덇린??, 'resetColumnWidthAutoAdjust_v623')
+  ui.createMenu('LOTTEON 서식')
+    .addItem('열너비 안전조정 시작/이어실행', 'runColumnWidthAutoAdjustStep_v623')
+    .addItem('열너비 안전조정 상태 확인', 'showColumnWidthAutoAdjustStatus_v623')
+    .addItem('열너비 안전조정 초기화', 'resetColumnWidthAutoAdjust_v623')
     .addSeparator()
-    .addItem('湲덉븸 1,000?⑥쐞 ?쇳몴 ?곸슜', 'applyAmountThousandsFormat_v649')
-    .addItem('諛깅텇??% ?곸슜', 'applyPercentOneDecimalFormat_v649')
+    .addItem('금액 1,000단위 쉼표 적용', 'applyAmountThousandsFormat_v649')
+    .addItem('백분율 % 적용', 'applyPercentOneDecimalFormat_v649')
     .addSeparator()
-    .addItem('?쒖떆?쒖떇留?鍮좊Ⅸ ?뺣━', 'applyDisplayStandardsOnlyFast_v623')
+    .addItem('표시서식만 빠른 정리', 'applyDisplayStandardsOnlyFast_v623')
     .addToUi();
 }
 
@@ -78,7 +78,7 @@ function authorizeLotteonLoader() {
   UrlFetchApp.fetch(LOTTEON_GITHUB_CODE_URL, { muteHttpExceptions: true, followRedirects: true });
   UrlFetchApp.fetch(LOTTEON_GITHUB_PATCH_URL, { muteHttpExceptions: true, followRedirects: true });
   authorizeLotteonScriptAppScope();
-  SpreadsheetApp.getUi().alert('GitHub 濡쒕뜑 沅뚰븳 ?뱀씤 ?꾨즺\n\nScriptApp ?몃━嫄?沅뚰븳源뚯? ?뺤씤?덉뒿?덈떎.\n?ㅽ봽?덈뱶?쒗듃瑜??덈줈怨좎묠????硫붾돱瑜??ㅼ떆 ?ㅽ뻾?섏꽭??');
+  SpreadsheetApp.getUi().alert('GitHub 로더 권한 승인 완료\n\nScriptApp 트리거 권한까지 확인했습니다.\n스프레드시트를 새로고침한 뒤 메뉴를 다시 실행하세요.');
 }
 
 function authorizeLotteonScriptAppScope() {
@@ -92,7 +92,7 @@ function authorizeLotteonScriptAppScope() {
     try { ScriptApp.deleteTrigger(dummy); } catch (e) {}
   }
   try {
-    SpreadsheetApp.getUi().alert('ScriptApp ?몃━嫄?沅뚰븳 ?뺤씤 ?꾨즺\n\n?꾩옱 ?꾨줈?앺듃 ?몃━嫄??? ' + triggers.length);
+    SpreadsheetApp.getUi().alert('ScriptApp 트리거 권한 확인 완료\n\n현재 프로젝트 트리거 수: ' + triggers.length);
   } catch (e) {}
 }
 
@@ -102,23 +102,23 @@ function testLotteonGitHubConnection() {
   const bundle = loadLotteonRemoteBundle_();
   const version = detectRemoteVersion_(bundle);
   SpreadsheetApp.getUi().alert(
-    'GitHub 肄붾뱶 ?곌껐 ?깃났\n\n' +
+    'GitHub 코드 연결 성공\n\n' +
     'Code.gs Raw URL:\n' + LOTTEON_GITHUB_CODE_URL + '\n\n' +
     'Patch Raw URL:\n' + LOTTEON_GITHUB_PATCH_URL + '\n\n' +
-    '濡쒕뜑 踰꾩쟾: ' + LOTTEON_LOADER_VERSION + '\n' +
-    '濡쒕뱶 ?ш린: ' + bundle.length.toLocaleString('ko-KR') + '??n' +
-    '踰꾩쟾 異붿젙: ' + version + '\n' +
-    '罹먯떆 諛⑹떇: ?ъ슜 ????n' +
-    'ScriptApp 沅뚰븳: 濡쒖뺄 loader???ы븿\n' +
-    '?꾪꽣 ?먮룞?덉빟 硫붾돱: 蹂듦뎄??n\n' +
-    '?꾪꽣蹂??곹뭹??留ㅼ씪 ?먮룞 媛깆떊 ?쒖옉/以묒? 硫붾돱瑜??ъ슜?????덉뒿?덈떎.'
+    '로더 버전: ' + LOTTEON_LOADER_VERSION + '\n' +
+    '로드 크기: ' + bundle.length.toLocaleString('ko-KR') + '자\n' +
+    '버전 추정: ' + version + '\n' +
+    '캐시 방식: 사용 안 함\n' +
+    'ScriptApp 권한: 로컬 loader에 포함\n' +
+    '필터 자동예약 메뉴: 복구됨\n\n' +
+    '필터별_상품수 매일 자동 갱신 시작/중지 메뉴를 사용할 수 있습니다.'
   );
 }
 
 function clearLotteonGitHubCodeCache() {
   ['LOTTEON_REMOTE_CODE_BUNDLE_V14','LOTTEON_REMOTE_CODE_BUNDLE_V13','LOTTEON_REMOTE_CODE_BUNDLE'].forEach(function(k){ try { CacheService.getScriptCache().remove(k); } catch(e) {} });
   PropertiesService.getScriptProperties().deleteProperty('LOTTEON_REMOTE_LAST_VERSION');
-  SpreadsheetApp.getUi().alert('GitHub 肄붾뱶 罹먯떆瑜?珥덇린?뷀뻽?듬땲??\n\nv1.10? ??⑸웾 肄붾뱶瑜?罹먯떆????ν븯吏 ?딆뒿?덈떎.');
+  SpreadsheetApp.getUi().alert('GitHub 코드 캐시를 초기화했습니다.\n\nv1.10은 대용량 코드를 캐시에 저장하지 않습니다.');
 }
 
 function loadLotteonRemoteBundle_() {
@@ -133,14 +133,14 @@ function fetchTextOrThrow_(url, label) {
   const response = UrlFetchApp.fetch(url + '?ts=' + new Date().getTime(), { method: 'get', muteHttpExceptions: true, followRedirects: true });
   const code = response.getResponseCode();
   const text = response.getContentText('UTF-8');
-  if (code < 200 || code >= 300) throw new Error(label + ' 濡쒕뱶 ?ㅽ뙣 HTTP ' + code + '\n' + url + '\n' + text.slice(0, 500));
+  if (code < 200 || code >= 300) throw new Error(label + ' 로드 실패 HTTP ' + code + '\n' + url + '\n' + text.slice(0, 500));
   return text;
 }
 
 function runRemoteFunctionByName_(functionName) {
   const bundle = loadLotteonRemoteBundle_();
   const safeName = String(functionName || '').trim();
-  if (!/^[A-Za-z_$][0-9A-Za-z_$]*$/.test(safeName)) throw new Error('?섎せ???⑥닔紐? ' + safeName);
+  if (!/^[A-Za-z_$][0-9A-Za-z_$]*$/.test(safeName)) throw new Error('잘못된 함수명: ' + safeName);
   return eval(bundle + '\n\n; if (typeof ' + safeName + ' !== "function") { throw new Error("Remote function not found: ' + safeName + '"); }\n' + safeName + '();');
 }
 
@@ -155,7 +155,7 @@ function detectRemoteVersion_(text) {
   const m = src.match(/LOTTEON_PATCH_BOOTSTRAP_VERSION\s*=\s*['"]([^'"]+)['"]/);
   if (m) return m[1];
   const all = src.match(/v6\.\d+/g);
-  return all && all.length ? all[all.length - 1] : '?뺤씤遺덇?';
+  return all && all.length ? all[all.length - 1] : '확인불가';
 }
 
 function runPendingChangesApproval() { return runRemoteFunctionByName_('runPendingChangesApproval'); }
