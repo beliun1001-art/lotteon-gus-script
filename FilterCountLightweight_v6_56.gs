@@ -11,7 +11,8 @@ var FILTER_COUNT_LW_FILTER_SHEET = '필터별_상품수';
 var FILTER_COUNT_LW_BATCH_SIZE = 10;
 var FILTER_COUNT_LW_GUARD_MS = 22000;
 var FILTER_COUNT_LW_HEADERS = ['검색필터명','브랜드명','계정번호','쿠팡계정ID','API_totalCount','API_totalPage','이번조회_행수','필터코드','API_최근수집일자','API_필터생성일','API_최근수집일자_필드','API_필터생성일_필드','메모'];
-var FILTER_COUNT_LW_ACCOUNT_MAP = { '01': ['227-27-04928','beliun1021'], '02': ['176-71-00758','beliun1021-1'], '03': ['835-58-00765','beliun1023'], '04': ['606-45-93763','beliun1024'] };
+// Code.gs filter-account convention. This is not the VAT business-number map.
+var FILTER_COUNT_LW_ACCOUNT_MAP = { '01': [1,'beliun1021'], '02': [2,'beliun1024'], '03': [3,'beliun1023'], '04': [4,'beliun1024'] };
 
 function runDailyFilterCountsOnceManual() { return filterCountLightweightStartOrResume_('MANUAL_NOW', false, true); }
 function runDailyFilterCountsStart() { return filterCountLightweightStartOrResume_('DAILY_START', true, false); }
@@ -61,8 +62,10 @@ function filterCountLightweightStep_(options) {
 }
 function filterCountLightweightDiscover_(state, started) {
   if (Date.now() - started >= FILTER_COUNT_LW_GUARD_MS) return;
+  var existing = filterCountLightweightExistingCounts_();
   var page = filterCountLightweightApi_('filterList', { page: String(state.page || 1), searchQuery: { searchKeyword: '롯백', siteId: '', filterGroup: 'all', sort: 'nameAsc' } });
   var data = page.data || page || {}; var items = filterCountLightweightItems_(page); var rows = items.map(filterCountLightweightRow_).filter(Boolean);
+  rows.forEach(function(row) { var previous = existing[row[0]]; if (previous) { row[4] = previous.totalCount; row[5] = previous.totalPage; row[12] = 'v6.56 기존 API_totalCount/API_totalPage 승계'; } });
   filterCountLightweightAppendWork_(rows); state.lastFilter = rows.length ? rows[rows.length - 1][0] : 'filterList page ' + state.page; state.page = Number(state.page || 1) + 1;
   if (rows.length && (!data.totalPage || state.page <= Number(data.totalPage))) return;
   var all = filterCountLightweightDedupeWork_(); filterCountLightweightReplace_(filterCountLightweightSheet_(FILTER_COUNT_LW_FILTER_SHEET), all); state.phase = all.length ? 'COUNT' : 'DONE'; state.totalFilters = all.length; state.currentIndex = 0; state.processedCount = 0; state.successCount = 0; state.errorCount = 0;
@@ -84,6 +87,7 @@ function filterCountLightweightSheet_(name) { var ss = SpreadsheetApp.getActive(
 function filterCountLightweightResetWork_() { var sheet = filterCountLightweightSheet_(FILTER_COUNT_LW_WORK_SHEET); sheet.clearContents(); sheet.getRange(1,1,1,FILTER_COUNT_LW_HEADERS.length).setValues([FILTER_COUNT_LW_HEADERS]); }
 function filterCountLightweightAppendWork_(rows) { if (!rows.length) return; var sheet = filterCountLightweightSheet_(FILTER_COUNT_LW_WORK_SHEET); sheet.getRange(Math.max(2,sheet.getLastRow()+1),1,rows.length,FILTER_COUNT_LW_HEADERS.length).setValues(rows); }
 function filterCountLightweightDedupeWork_() { var sheet = filterCountLightweightSheet_(FILTER_COUNT_LW_WORK_SHEET); if (sheet.getLastRow() < 2) return []; var map = {}; sheet.getRange(2,1,sheet.getLastRow()-1,FILTER_COUNT_LW_HEADERS.length).getValues().forEach(function(row){ if (row[0]) map[String(row[0])] = row; }); return Object.keys(map).sort().map(function(k){ return map[k]; }); }
+function filterCountLightweightExistingCounts_() { var sheet = filterCountLightweightSheet_(FILTER_COUNT_LW_FILTER_SHEET), map = {}; if (sheet.getLastRow() < 2) return map; sheet.getRange(2,1,sheet.getLastRow()-1,FILTER_COUNT_LW_HEADERS.length).getValues().forEach(function(row) { var name = String(row[0] || '').trim(); if (name) map[name] = { totalCount: row[4], totalPage: row[5] }; }); return map; }
 function filterCountLightweightReplace_(sheet, rows) { sheet.clearContents(); sheet.getRange(1,1,1,FILTER_COUNT_LW_HEADERS.length).setValues([FILTER_COUNT_LW_HEADERS]); if (rows.length) sheet.getRange(2,1,rows.length,FILTER_COUNT_LW_HEADERS.length).setValues(rows); sheet.setFrozenRows(1); }
 function filterCountLightweightWriteStatus_(s) { var sheet = filterCountLightweightSheet_(FILTER_COUNT_LW_STATUS_SHEET), rows = [['항목','값'],['버전',s.version || FILTER_COUNT_LW_VERSION],['상태',s.status || 'IDLE'],['전체 필터 수',s.totalFilters || 0],['현재 index',s.currentIndex || 0],['처리 완료 수',s.processedCount || 0],['성공 수',s.successCount || 0],['오류 수',s.errorCount || 0],['다음 실행 예약 여부',s.nextExecutionScheduled || 'N'],['마지막 처리 필터',s.lastFilter || ''],['마지막 오류',s.lastError || ''],['최종 갱신',s.lastUpdatedAt || '']]; sheet.clearContents(); sheet.getRange(1,1,rows.length,2).setValues(rows); sheet.setFrozenRows(1); }
 function filterCountLightweightSchedule_() { try { filterCountLightweightDeleteTriggers_(['runDailyFilterCountsContinue']); ScriptApp.newTrigger('runDailyFilterCountsContinue').timeBased().after(60000).create(); return { ok: true }; } catch (e) { return { ok: false, error: '트리거 권한 오류: ' + String(e && e.message ? e.message : e) }; } }
