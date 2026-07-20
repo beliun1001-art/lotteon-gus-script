@@ -2,13 +2,13 @@
  * LOTTEON v6.55 safe filter-count runner.
  *
  * The filter count menu deliberately does not call dashboard, VAT, sales or
- * retransmit routines.  It only refreshes ?꾪꽣蹂??곹뭹??API_totalCount.
+ * retransmit routines.  It only refreshes 필터별_상품수.API_totalCount.
  */
 var LOTTEON_PATCH_V655_SAFE_FILTER_COUNT_RUNNER_LOADED = true;
 var LOTTEON_FILTER_COUNT_SAFE_VERSION = 'v6.55';
 var LOTTEON_FILTER_COUNT_SAFE_STATE_KEY = 'LOTTEON_FILTER_COUNT_SAFE_JOB_STATE';
-var LOTTEON_FILTER_COUNT_SAFE_STATUS_SHEET = '?꾪꽣蹂??곹뭹???먮룞?곹깭';
-var LOTTEON_FILTER_COUNT_SAFE_WORK_SHEET = '?꾪꽣蹂??곹뭹???덉쟾?묒뾽';
+var LOTTEON_FILTER_COUNT_SAFE_STATUS_SHEET = '필터별_상품수_자동상태';
+var LOTTEON_FILTER_COUNT_SAFE_WORK_SHEET = '필터별_상품수_안전작업';
 var LOTTEON_FILTER_COUNT_SAFE_BATCH_SIZE = 10;
 var LOTTEON_FILTER_COUNT_SAFE_TIMEOUT_MS = 22000;
 
@@ -28,7 +28,7 @@ function runDailyFilterCountsStep_(options) {
   options = options || {};
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
-    writeSafeFilterCountStatus_v655_(getSafeFilterCountState_v655_() || { status: 'LOCKED', lastError: '?ㅻⅨ ?덉쟾 媛깆떊 ?묒뾽???ㅽ뻾 以묒엯?덈떎.' });
+    writeSafeFilterCountStatus_v655_(getSafeFilterCountState_v655_() || { status: 'LOCKED', lastError: '다른 안전 갱신 작업이 실행 중입니다.' });
     return { done: false, locked: true };
   }
 
@@ -64,7 +64,7 @@ function runDailyFilterCountsStep_(options) {
         state.nextExecutionScheduled = 'Y';
       } else {
         state.status = 'TRIGGER_PERMISSION_ERROR';
-        state.lastError = continuation.error || '?댁뼱?ㅽ뻾 ?몃━嫄곕? ?덉빟?섏? 紐삵뻽?듬땲??';
+        state.lastError = continuation.error || '이어실행 트리거를 예약하지 못했습니다.';
         state.nextExecutionScheduled = 'N';
       }
     }
@@ -81,7 +81,7 @@ function runDailyFilterCountsStep_(options) {
     saveSafeFilterCountState_v655_(failed);
     writeSafeFilterCountStatus_v655_(failed);
     deleteSafeFilterCountContinuationTriggers_v655_();
-    if (options.showAlert) SpreadsheetApp.getUi().alert('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 ?ㅻ쪟\n\n' + message);
+    if (options.showAlert) SpreadsheetApp.getUi().alert('필터별_상품수 안전 갱신 오류\n\n' + message);
     throw e;
   } finally {
     try { lock.releaseLock(); } catch (ignore) {}
@@ -118,8 +118,8 @@ function startOrResumeSafeFilterCountJob_v655_(source, forceNew, showAlert) {
   if (showAlert) {
     var current = result.state || getSafeFilterCountState_v655_() || state;
     SpreadsheetApp.getUi().alert(
-      result.done ? '?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 ?꾨즺' : '?꾪꽣蹂??곹뭹???덉쟾 媛깆떊???쒖옉/?댁뼱?ㅽ뻾?덉뒿?덈떎.',
-      '?곹깭: ' + current.status + '\n泥섎━: ' + current.processedCount + ' / ' + current.totalFilters + '\n?ㅻ쪟: ' + current.errorCount,
+      result.done ? '필터별_상품수 안전 갱신 완료' : '필터별_상품수 안전 갱신을 시작/이어실행했습니다.',
+      '상태: ' + current.status + '\n처리: ' + current.processedCount + ' / ' + current.totalFilters + '\n오류: ' + current.errorCount,
       SpreadsheetApp.getUi().ButtonSet.OK
     );
   }
@@ -179,7 +179,7 @@ function runSafeFilterCountTick_v655_(state, startedAt) {
       rows[i][4] = Number(item.totalCount || 0);
       rows[i][5] = Number(item.totalPage || 0);
       rows[i][6] = 0;
-      rows[i][12] = 'v6.55 productList API_totalCount ?덉쟾 媛깆떊';
+      rows[i][12] = 'v6.55 productList API_totalCount 안전 갱신';
     }
   }
   sheet.getRange(startIndex + 2, 1, rows.length, CONFIG.HEADERS.FILTERS.length).setValues(rows);
@@ -190,13 +190,13 @@ function showDailyFilterCountsStatus() {
   var state = getSafeFilterCountState_v655_() || { version: LOTTEON_FILTER_COUNT_SAFE_VERSION, status: 'IDLE' };
   writeSafeFilterCountStatus_v655_(state);
   SpreadsheetApp.getUi().alert(
-    '?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 ?곹깭\n\n' +
-    '?곹깭: ' + (state.status || 'IDLE') + '\n' +
-    '吏꾪뻾: ' + (state.currentIndex || 0) + ' / ' + (state.totalFilters || 0) + '\n' +
-    '?깃났/?ㅻ쪟: ' + (state.successCount || 0) + ' / ' + (state.errorCount || 0) + '\n' +
-    '?ㅼ쓬 ?ㅽ뻾 ?덉빟: ' + (state.nextExecutionScheduled || 'N') + '\n' +
-    '留덉?留??꾪꽣: ' + (state.lastFilter || '') + '\n' +
-    '留덉?留??ㅻ쪟: ' + (state.lastError || '')
+    '필터별_상품수 안전 갱신 상태\n\n' +
+    '상태: ' + (state.status || 'IDLE') + '\n' +
+    '진행: ' + (state.currentIndex || 0) + ' / ' + (state.totalFilters || 0) + '\n' +
+    '성공/오류: ' + (state.successCount || 0) + ' / ' + (state.errorCount || 0) + '\n' +
+    '다음 실행 예약: ' + (state.nextExecutionScheduled || 'N') + '\n' +
+    '마지막 필터: ' + (state.lastFilter || '') + '\n' +
+    '마지막 오류: ' + (state.lastError || '')
   );
   return state;
 }
@@ -207,7 +207,7 @@ function resetDailyFilterCountsSafeState() {
   resetSafeFilterCountWork_v655_();
   var state = { version: LOTTEON_FILTER_COUNT_SAFE_VERSION, status: 'RESET', lastUpdatedAt: now_(), nextExecutionScheduled: 'N' };
   writeSafeFilterCountStatus_v655_(state);
-  SpreadsheetApp.getUi().alert('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 ?곹깭瑜?珥덇린?뷀뻽?듬땲??');
+  SpreadsheetApp.getUi().alert('필터별_상품수 안전 갱신 상태를 초기화했습니다.');
 }
 
 function startDailyFilterCountsSchedule() {
@@ -219,9 +219,9 @@ function startDailyFilterCountsSchedule() {
     var state = getSafeFilterCountState_v655_() || { version: LOTTEON_FILTER_COUNT_SAFE_VERSION };
     state.status = 'DAILY_SCHEDULED'; state.lastUpdatedAt = now_(); state.nextExecutionScheduled = 'N';
     saveSafeFilterCountState_v655_(state); writeSafeFilterCountStatus_v655_(state);
-    SpreadsheetApp.getUi().alert('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊??留ㅼ씪 06:10 ?꾪썑濡??덉빟?덉뒿?덈떎.');
+    SpreadsheetApp.getUi().alert('필터별_상품수 안전 갱신을 매일 06:10 전후로 예약했습니다.');
   } catch (e) {
-    var msg = '?몃━嫄?沅뚰븳 ?ㅻ쪟: ' + String(e && e.message ? e.message : e) + '\nApps Script?먯꽌 ScriptApp ?몃━嫄?沅뚰븳???뱀씤?????ㅼ떆 ?ㅽ뻾?섏꽭??';
+    var msg = '트리거 권한 오류: ' + String(e && e.message ? e.message : e) + '\nApps Script에서 ScriptApp 트리거 권한을 승인한 뒤 다시 실행하세요.';
     var failed = getSafeFilterCountState_v655_() || { version: LOTTEON_FILTER_COUNT_SAFE_VERSION };
     failed.status = 'TRIGGER_PERMISSION_ERROR'; failed.lastError = msg; failed.lastUpdatedAt = now_();
     saveSafeFilterCountState_v655_(failed); writeSafeFilterCountStatus_v655_(failed);
@@ -235,9 +235,9 @@ function stopDailyFilterCountsSchedule() {
     var state = getSafeFilterCountState_v655_() || { version: LOTTEON_FILTER_COUNT_SAFE_VERSION };
     state.status = 'STOPPED'; state.nextExecutionScheduled = 'N'; state.lastUpdatedAt = now_();
     saveSafeFilterCountState_v655_(state); writeSafeFilterCountStatus_v655_(state);
-    SpreadsheetApp.getUi().alert('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 ?덉빟??以묒??덉뒿?덈떎.');
+    SpreadsheetApp.getUi().alert('필터별_상품수 안전 갱신 예약을 중지했습니다.');
   } catch (e) {
-    SpreadsheetApp.getUi().alert('?몃━嫄?沅뚰븳 ?ㅻ쪟: ' + String(e && e.message ? e.message : e));
+    SpreadsheetApp.getUi().alert('트리거 권한 오류: ' + String(e && e.message ? e.message : e));
   }
 }
 
@@ -247,7 +247,7 @@ function scheduleSafeFilterCountContinuation_v655_() {
     ScriptApp.newTrigger('runDailyFilterCountsContinue').timeBased().after(60 * 1000).create();
     return { scheduled: true, error: '' };
   } catch (e) {
-    return { scheduled: false, error: '?몃━嫄?沅뚰븳 ?ㅻ쪟: ' + String(e && e.message ? e.message : e) };
+    return { scheduled: false, error: '트리거 권한 오류: ' + String(e && e.message ? e.message : e) };
   }
 }
 
@@ -288,11 +288,11 @@ function dedupeSafeFilterCountWorkRows_v655_() {
   sheet.getRange(2, 1, sheet.getLastRow() - 1, CONFIG.HEADERS.FILTERS.length).getValues().forEach(function(row) { if (String(row[0] || '').trim()) map[String(row[0]).trim()] = row; });
   return Object.keys(map).sort().map(function(key) { return map[key]; });
 }
-function appendSafeFilterCountErrorMemo_v655_(memo, error) { return String(memo || '').slice(0, 350) + ' / v6.55 ?ㅻ쪟: ' + String(error || '').slice(0, 300); }
+function appendSafeFilterCountErrorMemo_v655_(memo, error) { return String(memo || '').slice(0, 350) + ' / v6.55 오류: ' + String(error || '').slice(0, 300); }
 function writeSafeFilterCountStatus_v655_(state) {
   var sheet = ensureSheet_(SpreadsheetApp.getActive(), LOTTEON_FILTER_COUNT_SAFE_STATUS_SHEET);
   var rows = [
-    ['??ぉ', '媛?], ['踰꾩쟾', state.version || LOTTEON_FILTER_COUNT_SAFE_VERSION], ['?곹깭', state.status || 'IDLE'], ['?꾩껜 ?꾪꽣 ??, state.totalFilters || 0], ['?꾩옱 index', state.currentIndex || 0], ['泥섎━ ?꾨즺 ??, state.processedCount || 0], ['?깃났 ??, state.successCount || 0], ['?ㅻ쪟 ??, state.errorCount || 0], ['?ㅼ쓬 ?ㅽ뻾 ?덉빟 ?щ?', state.nextExecutionScheduled || 'N'], ['留덉?留?泥섎━ ?꾪꽣', state.lastFilter || ''], ['留덉?留??ㅻ쪟', state.lastError || ''], ['理쒖쥌 媛깆떊', state.lastUpdatedAt || '']
+    ['항목', '값'], ['버전', state.version || LOTTEON_FILTER_COUNT_SAFE_VERSION], ['상태', state.status || 'IDLE'], ['전체 필터 수', state.totalFilters || 0], ['현재 index', state.currentIndex || 0], ['처리 완료 수', state.processedCount || 0], ['성공 수', state.successCount || 0], ['오류 수', state.errorCount || 0], ['다음 실행 예약 여부', state.nextExecutionScheduled || 'N'], ['마지막 처리 필터', state.lastFilter || ''], ['마지막 오류', state.lastError || ''], ['최종 갱신', state.lastUpdatedAt || '']
   ];
   sheet.clearContents(); sheet.getRange(1, 1, rows.length, 2).setValues(rows); sheet.setFrozenRows(1);
 }
