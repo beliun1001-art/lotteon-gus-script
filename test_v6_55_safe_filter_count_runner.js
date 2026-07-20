@@ -17,13 +17,13 @@ assert(!source.includes('generateVatReports'));
 assert(!source.includes('autoResize'));
 assert(bootstrap.includes("LOTTEON_PATCH_BOOTSTRAP_VERSION = 'v6.55'"));
 assert(bootstrap.includes("'Patch_v6_54_vat_validation_control_tower.gs','Patch_v6_55_safe_filter_count_runner.gs'"));
-assert(operatingLoader.includes('?꾪꽣蹂??곹뭹???덉쟾 媛깆떊 珥덇린??));
+assert(operatingLoader.includes('필터별_상품수 안전 갱신 초기화'));
 assert(operatingLoader.includes("function resetDailyFilterCountsSafeState()"));
 
 const values = [
-  ['寃?됲븘?곕챸', '釉뚮옖?쒕챸', '怨꾩젙踰덊샇', '荑좏뙜怨꾩젙ID', 'API_totalCount', 'API_totalPage', '?대쾲議고쉶_?됱닔', '?꾪꽣肄붾뱶', '理쒓렐', '?앹꽦', '理쒓렐?꾨뱶', '?앹꽦?꾨뱶', '硫붾え'],
-  ['濡?갚_01_A', 'A', '', '', 3, 1, 0, '', '', '', '', '', 'old'],
-  ['濡?갚_01_B', 'B', '', '', 4, 1, 0, '', '', '', '', '', 'old']
+  ['검색필터명', '브랜드명', '계정번호', '쿠팡계정ID', 'API_totalCount', 'API_totalPage', '이번조회_행수', '필터코드', '최근', '생성', '최근필드', '생성필드', '메모'],
+  ['롯백_01_A', 'A', '', '', 3, 1, 0, '', '', '', '', '', 'old'],
+  ['롯백_01_B', 'B', '', '', 4, 1, 0, '', '', '', '', '', 'old']
 ];
 const sheet = {
   getLastRow: () => values.length,
@@ -40,7 +40,7 @@ const sandbox = {
   String,
   Number,
   Math,
-  CONFIG: { SHEETS: { FILTERS: '?꾪꽣蹂??곹뭹?? }, HEADERS: { FILTERS: values[0] } },
+  CONFIG: { SHEETS: { FILTERS: '필터별_상품수' }, HEADERS: { FILTERS: values[0] } },
   getSheet_: () => sheet,
   fetchProductListTotalCountFast_: names => ({
     [names[0]]: { totalCount: 11, totalPage: 2, error: '' },
@@ -78,7 +78,7 @@ vm.runInContext(source, triggerSandbox);
 const triggerState = { version: 'v6.55', phase: 'COUNT', status: 'COUNT_RUNNING', totalFilters: 1, currentIndex: 0, processedCount: 0, successCount: 0, errorCount: 0, lastError: '' };
 propertyStore.LOTTEON_FILTER_COUNT_SAFE_JOB_STATE = JSON.stringify(triggerState);
 triggerSandbox.runSafeFilterCountTick_v655_ = () => {};
-triggerSandbox.scheduleSafeFilterCountContinuation_v655_ = () => ({ scheduled: false, error: '?몃━嫄?沅뚰븳 ?ㅻ쪟: denied' });
+triggerSandbox.scheduleSafeFilterCountContinuation_v655_ = () => ({ scheduled: false, error: '트리거 권한 오류: denied' });
 triggerSandbox.deleteSafeFilterCountContinuationTriggers_v655_ = () => 0;
 let displayedStatus = null;
 triggerSandbox.writeSafeFilterCountStatus_v655_ = state => { displayedStatus = state.status; };
