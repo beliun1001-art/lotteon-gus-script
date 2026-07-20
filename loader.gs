@@ -11,7 +11,7 @@
  */
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
-const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_01_daily_filter_auto.gs';
+const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
 const LOTTEON_GITHUB_README_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/README.md';
 
 function onOpen() {
@@ -24,8 +24,9 @@ function onOpen() {
     .addItem('① 변경사항 반영 실행', 'runPendingChangesApproval')
     .addItem('⑤ 대시보드만 빠른 갱신', 'refreshDashboardFastOnly')
     .addSeparator()
-    .addItem('필터별_상품수 자동 갱신 지금 시작', 'runDailyFilterCountsOnceManual')
-    .addItem('필터별_상품수 자동 상태 확인', 'showDailyFilterCountsStatus')
+    .addItem('필터별_상품수 안전 갱신 시작/이어실행', 'runDailyFilterCountsOnceManual')
+    .addItem('필터별_상품수 안전 갱신 상태 확인', 'showDailyFilterCountsStatus')
+    .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
     .addSeparator()
     .addItem('③ 쿠팡재전송_로그 갱신', 'createRetransmitLogSheet')
     .addItem('④ 핵심요약+대시보드 갱신', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
@@ -38,8 +39,8 @@ function onOpen() {
     .addItem('변경감지 기능 시작', 'startChangeDetectionApproval')
     .addItem('변경감지 기능 중지', 'stopChangeDetectionApproval')
     .addSeparator()
-    .addItem('필터별_상품수 자동 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
-    .addItem('필터별_상품수 자동 갱신 중지', 'stopDailyFilterCountsSchedule')
+    .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
+    .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
     .addSeparator()
     .addItem('API 인증값 저장', 'saveApiCredentials')
     .addItem('API 연결 테스트', 'testLotteonApiConnection')
@@ -206,6 +207,7 @@ function startChangeDetectionApproval() { return runRemoteFunction_('startChange
 function stopChangeDetectionApproval() { return runRemoteFunction_('stopChangeDetectionApproval'); }
 function resetChangeDetectionFlags() { return runRemoteFunction_('resetChangeDetectionFlags'); }
 function resetFilterListResumeProgress() { return runRemoteFunction_('resetFilterListResumeProgress'); }
+function resetDailyFilterCountsSafeState() { return runRemoteFunction_('resetDailyFilterCountsSafeState'); }
 function startDailyFilterCountsSchedule() { return runRemoteFunction_('startDailyFilterCountsSchedule'); }
 function stopDailyFilterCountsSchedule() { return runRemoteFunction_('stopDailyFilterCountsSchedule'); }
 function runDailyFilterCountsOnceManual() { return runRemoteFunction_('runDailyFilterCountsOnceManual'); }
@@ -226,3 +228,4 @@ function runStableAutoRefreshOnce() { return runRemoteFunction_('runStableAutoRe
 
 // 설치형 onEdit 트리거 wrapper
 function handleWatchedSheetEdit(e) { return runRemoteFunction_('handleWatchedSheetEdit', [e]); }
+

@@ -1,5 +1,5 @@
 /**
- * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.10
+ * LOTTEON Google Sheets Apps Script GitHub Remote Loader v1.11
  *
  * v1.10 핵심:
  * - v1.8 ScriptApp 권한 포함 구조 유지
@@ -18,7 +18,7 @@
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
-const LOTTEON_LOADER_VERSION = 'v1.10';
+const LOTTEON_LOADER_VERSION = 'v1.11';
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -28,10 +28,11 @@ function onOpen() {
     .addItem('① 변경사항 반영 실행', 'runPendingChangesApproval')
     .addItem('⑤ 대시보드만 빠른 갱신', 'refreshDashboardFastOnly')
     .addSeparator()
-    .addItem('필터별_상품수 자동 갱신 지금 시작', 'runDailyFilterCountsOnceManual')
-    .addItem('필터별_상품수 자동 상태 확인', 'showDailyFilterCountsStatus')
-    .addItem('필터별_상품수 매일 자동 갱신 시작(06:10)', 'startDailyFilterCountsSchedule')
-    .addItem('필터별_상품수 매일 자동 갱신 중지', 'stopDailyFilterCountsSchedule')
+    .addItem('필터별_상품수 안전 갱신 시작/이어실행', 'runDailyFilterCountsOnceManual')
+    .addItem('필터별_상품수 안전 갱신 상태 확인', 'showDailyFilterCountsStatus')
+    .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
+    .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
+    .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
     .addSeparator()
     .addItem('③ 쿠팡재전송_로그 갱신', 'createRetransmitLogSheet')
     .addItem('④ 핵심요약+대시보드 갱신', 'refreshCoreSummaryAndDashboardWithRetransmitLogDates')
@@ -42,9 +43,9 @@ function onOpen() {
         .addItem('GitHub 로더 권한 승인', 'authorizeLotteonLoader')
         .addItem('ScriptApp 트리거 권한 확인', 'authorizeLotteonScriptAppScope')
         .addItem('GitHub 코드 캐시 초기화', 'clearLotteonGitHubCodeCache')
-        .addItem('필터별_상품수 매일 자동 갱신 시작(06:10)', 'startDailyFilterCountsSchedule')
-        .addItem('필터별_상품수 매일 자동 갱신 중지', 'stopDailyFilterCountsSchedule')
-        .addItem('필터별_상품수 이어실행 초기화', 'resetFilterListResumeState')
+        .addItem('필터별_상품수 안전 갱신 시작(매일 06:10)', 'startDailyFilterCountsSchedule')
+        .addItem('필터별_상품수 안전 갱신 중지', 'stopDailyFilterCountsSchedule')
+        .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
         .addSeparator()
         .addItem('변경감지 기능 시작', 'startChangeDetection')
         .addItem('변경감지 기능 중지', 'stopChangeDetection')
@@ -173,6 +174,7 @@ function startChangeDetection() { return runRemoteFirstAvailable_(['startChangeD
 function stopChangeDetection() { return runRemoteFirstAvailable_(['stopChangeDetection', 'stopChangeDetectionTrigger']); }
 function resetChangeDetectionFlags() { return runRemoteFirstAvailable_(['resetChangeDetectionFlags', 'resetChangeDetectionFlag']); }
 function resetFilterListResumeState() { return runRemoteFirstAvailable_(['resetFilterListResumeState', 'resetFilterListResume']); }
+function resetDailyFilterCountsSafeState() { return runRemoteFunctionByName_('resetDailyFilterCountsSafeState'); }
 function generateVatReportsFullSeparated_v622() { return runRemoteFunctionByName_('generateVatReportsFullSeparated_v622'); }
 function runColumnWidthAutoAdjustStep_v623() { return runRemoteFunctionByName_('runColumnWidthAutoAdjustStep_v623'); }
 function showColumnWidthAutoAdjustStatus_v623() { return runRemoteFunctionByName_('showColumnWidthAutoAdjustStatus_v623'); }
@@ -180,3 +182,4 @@ function resetColumnWidthAutoAdjust_v623() { return runRemoteFunctionByName_('re
 function applyAmountThousandsFormat_v649() { return runRemoteFunctionByName_('applyAmountThousandsFormat_v649'); }
 function applyPercentOneDecimalFormat_v649() { return runRemoteFunctionByName_('applyPercentOneDecimalFormat_v649'); }
 function applyDisplayStandardsOnlyFast_v623() { return runRemoteFunctionByName_('applyDisplayStandardsOnlyFast_v623'); }
+
