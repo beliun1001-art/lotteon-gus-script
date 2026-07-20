@@ -174,7 +174,7 @@ function startChangeDetection() { return runRemoteFirstAvailable_(['startChangeD
 function stopChangeDetection() { return runRemoteFirstAvailable_(['stopChangeDetection', 'stopChangeDetectionTrigger']); }
 function resetChangeDetectionFlags() { return runRemoteFirstAvailable_(['resetChangeDetectionFlags', 'resetChangeDetectionFlag']); }
 function resetFilterListResumeState() { return runRemoteFirstAvailable_(['resetFilterListResumeState', 'resetFilterListResume']); }
-    .addItem('필터별_상품수 안전 갱신 초기화', 'resetDailyFilterCountsSafeState')
+function resetDailyFilterCountsSafeState() { return runRemoteFunctionByName_('resetDailyFilterCountsSafeState'); }
 function generateVatReportsFullSeparated_v622() { return runRemoteFunctionByName_('generateVatReportsFullSeparated_v622'); }
 function runColumnWidthAutoAdjustStep_v623() { return runRemoteFunctionByName_('runColumnWidthAutoAdjustStep_v623'); }
 function showColumnWidthAutoAdjustStatus_v623() { return runRemoteFunctionByName_('showColumnWidthAutoAdjustStatus_v623'); }
