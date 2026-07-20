@@ -18,6 +18,7 @@
 
 const LOTTEON_GITHUB_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
 const LOTTEON_GITHUB_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
+const LOTTEON_FILTER_COUNT_LIGHTWEIGHT_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/FilterCountLightweight_v6_56.gs';
 const LOTTEON_LOADER_VERSION = 'v1.11';
 
 function onOpen() {
@@ -150,6 +151,17 @@ function runRemoteFirstAvailable_(functionNames) {
   return eval(bundle + '\n\n; (function(){ var names = ' + namesLiteral + '; for (var i=0;i<names.length;i++){ try { if (typeof eval(names[i]) === "function") return eval(names[i])(); } catch(e) {} } throw new Error("Remote function not found: " + names.join(", ")); })();');
 }
 
+function loadFilterCountLightweightBundle_() {
+  const started = new Date().getTime();
+  const text = fetchTextOrThrow_(LOTTEON_FILTER_COUNT_LIGHTWEIGHT_URL, 'FilterCountLightweight_v6_56.gs');
+  PropertiesService.getScriptProperties().setProperty('LOTTEON_FILTER_COUNT_LIGHTWEIGHT_LOAD_METRICS', JSON.stringify({ remoteFetchFiles: 1, runnerEntryMs: new Date().getTime() - started, at: new Date().toISOString() }));
+  return text;
+}
+function runFilterCountLightweightFunction_(functionName) {
+  const bundle = loadFilterCountLightweightBundle_();
+  return eval(bundle + '\n; if (typeof ' + functionName + ' !== "function") throw new Error("Lightweight filter function not found: ' + functionName + '"); ' + functionName + '();');
+}
+
 function detectRemoteVersion_(text) {
   const src = String(text || '');
   const m = src.match(/LOTTEON_PATCH_BOOTSTRAP_VERSION\s*=\s*['"]([^'"]+)['"]/);
@@ -160,10 +172,11 @@ function detectRemoteVersion_(text) {
 
 function runPendingChangesApproval() { return runRemoteFunctionByName_('runPendingChangesApproval'); }
 function refreshDashboardFastOnly() { return runRemoteFunctionByName_('refreshDashboardFastOnly'); }
-function runDailyFilterCountsOnceManual() { return runRemoteFirstAvailable_(['runDailyFilterCountsOnceManual', 'runDailyFilterCountsStep_', 'refreshFilterCountsFast']); }
-function showDailyFilterCountsStatus() { return runRemoteFirstAvailable_(['showDailyFilterCountsStatus', 'showDailyFilterCountsStatus_v601', 'showFilterCountsStatus']); }
-function startDailyFilterCountsSchedule() { return runRemoteFunctionByName_('startDailyFilterCountsSchedule'); }
-function stopDailyFilterCountsSchedule() { return runRemoteFunctionByName_('stopDailyFilterCountsSchedule'); }
+function runDailyFilterCountsOnceManual() { return runFilterCountLightweightFunction_('runDailyFilterCountsOnceManual'); }
+function runDailyFilterCountsContinue() { return runFilterCountLightweightFunction_('runDailyFilterCountsContinue'); }
+function showDailyFilterCountsStatus() { return runFilterCountLightweightFunction_('showDailyFilterCountsStatus'); }
+function startDailyFilterCountsSchedule() { return runFilterCountLightweightFunction_('startDailyFilterCountsSchedule'); }
+function stopDailyFilterCountsSchedule() { return runFilterCountLightweightFunction_('stopDailyFilterCountsSchedule'); }
 function createRetransmitLogSheet() { return runRemoteFunctionByName_('createRetransmitLogSheet'); }
 function refreshCoreSummaryAndDashboardWithRetransmitLogDates() { return runRemoteFunctionByName_('refreshCoreSummaryAndDashboardWithRetransmitLogDates'); }
 function showOperationSheetsOnly() { return runRemoteFirstAvailable_(['cleanupOperationSheets_v653', 'showOperationSheetsOnly', 'showOnlyOperationSheets', 'hideNonOperationSheets']); }
@@ -174,7 +187,7 @@ function startChangeDetection() { return runRemoteFirstAvailable_(['startChangeD
 function stopChangeDetection() { return runRemoteFirstAvailable_(['stopChangeDetection', 'stopChangeDetectionTrigger']); }
 function resetChangeDetectionFlags() { return runRemoteFirstAvailable_(['resetChangeDetectionFlags', 'resetChangeDetectionFlag']); }
 function resetFilterListResumeState() { return runRemoteFirstAvailable_(['resetFilterListResumeState', 'resetFilterListResume']); }
-function resetDailyFilterCountsSafeState() { return runRemoteFunctionByName_('resetDailyFilterCountsSafeState'); }
+function resetDailyFilterCountsSafeState() { return runFilterCountLightweightFunction_('resetDailyFilterCountsSafeState'); }
 function generateVatReportsFullSeparated_v622() { return runRemoteFunctionByName_('generateVatReportsFullSeparated_v622'); }
 function runColumnWidthAutoAdjustStep_v623() { return runRemoteFunctionByName_('runColumnWidthAutoAdjustStep_v623'); }
 function showColumnWidthAutoAdjustStatus_v623() { return runRemoteFunctionByName_('showColumnWidthAutoAdjustStatus_v623'); }
