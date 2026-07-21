@@ -12,5 +12,9 @@ const values = [['주문일','쿠팡계정ID','사업자등록번호','순수매
 const enriched = ctx.enrichVatDetailPeriods_v657_(values); const rows = ctx.aggregateVatPeriods_v657_(enriched.values);
 const half1 = rows.find(r => r[0] === '반기' && r[1] === '2026' && r[2] === '상반기'); const half2 = rows.find(r => r[0] === '반기' && r[2] === '하반기'); const unknown = rows.find(r => r[0] === '기간미확인');
 assert.equal(half1[7], 300); assert.equal(half2[7], 300); assert.equal(unknown[6], 1); assert.equal(unknown[7], 400);
+const monthlySales = rows.filter(r => r[0] === '월별').reduce((sum, r) => sum + r[7], 0);
+const halfSales = rows.filter(r => r[0] === '반기').reduce((sum, r) => sum + r[7], 0);
+assert.equal(monthlySales, halfSales); // no monthly/half duplicate addition
+assert.equal(halfSales + unknown[7], 1000); // source detail reconciliation
 console.log('v6.57 VAT period reconciliation mock: OK (month/half/year boundary + unknown date)');
 
