@@ -24,10 +24,26 @@ const half2 = rows.find(r => r[0] === '반기' && r[2] === '하반기');
 const unknown = rows.find(r => r[0] === '기간미확인');
 assert.equal(half1[6], 1); // same order, two products => one distinct order
 assert.equal(half1[7], 300); assert.equal(half2[7], 300); assert.equal(unknown[6], 0); assert.equal(unknown[7], 400);
+assert.equal(half1[9], 30); assert.equal(half2[9], 30); assert.equal(unknown[9], 40);
 assert.equal(rows.blankOrderDetailRows, 1); // blank order number is never guessed as one order
 const monthlySales = rows.filter(r => r[0] === '월별').reduce((sum, r) => sum + r[7], 0);
 const halfSales = rows.filter(r => r[0] === '반기').reduce((sum, r) => sum + r[7], 0);
 assert.equal(monthlySales, halfSales); assert.equal(halfSales + unknown[7], 1000);
+
+function feeRows(feeHeader) {
+  const header = ['신고연도','반기','신고월','쿠팡계정ID','사업자등록번호','주문번호','순수매출액','정산기준금액'];
+  if (feeHeader) header.push(feeHeader);
+  return ctx.aggregateVatPeriods_v657_([header, ['2026','상반기','2026-01','acct','biz','o1',1000,900,9999]]);
+}
+['마켓수수료', '수수료', ''].forEach(name => assert.equal(feeRows(name).find(r => r[0] === '반기')[9], 100));
+const smoke = ctx.aggregateVatPeriods_v657_([
+  ['신고연도','반기','신고월','쿠팡계정ID','사업자등록번호','주문번호','순수매출액','정산기준금액','매입금액','매출부가세','매입부가세','납부예상부가세','예상이익','부가세반영예상이익'],
+  ['2026','상반기','2026-06','acct','biz','h1',70000000,62849234,1,2,3,4,5,6],
+  ['2026','하반기','2026-12','acct','biz','h2',43311600,39244707,1,2,3,4,5,6]
+]);
+assert.equal(smoke.filter(r => r[0] === '반기' && r[2] === '상반기')[0][9], 7150766);
+assert.equal(smoke.filter(r => r[0] === '반기' && r[2] === '하반기')[0][9], 4066893);
+assert.equal(smoke.filter(r => r[0] === '반기').reduce((n, r) => n + r[9], 0), 11217659);
 
 // Integration-style path: source keeps year, detail shows only MM/dd, duplicate keys consume stable queues.
 const sourceRows = [
@@ -49,5 +65,5 @@ let saved, written;
 ctx.saveVatState_v648_ = state => { saved = state; }; ctx.writeVatStatus_v648_ = (ss, state) => { written = state; }; ctx.toastVat_v648_ = () => {};
 const failed = ctx.finalizeVatPeriodFailure_v657_({}, { status: 'done' }, new Error('mock failure'));
 assert.equal(failed.status, 'failed'); assert.match(saved.lastError, /mock failure/); assert.equal(written.status, 'failed');
-console.log('v6.57 VAT period mock: OK (boundaries, unknown, MM/dd restore, distinct order, reconciliation, format, failed status)');
+console.log('v6.57 VAT period mock: OK (boundaries, fee headers/absent, smoke reconciliation, unknown, MM/dd restore, distinct order, format, failed status)');
 
