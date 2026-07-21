@@ -10,7 +10,7 @@
  *   3) 사이트상품번호 또는 마켓상품번호 존재
  *   4) 브랜드 존재
  * - 고객별/주문번호별/수동전송수/TMP류 시트는 삭제
- * - 운영 핵심 10개 시트만 표시하고 진단/상태/보강/검증 시트는 숨김
+ * - 운영 핵심 11개 시트만 표시하고 진단/상태/보강/검증 시트는 숨김
  */
 
 var LOTTEON_PATCH_V653_VAT_FILTER_AND_SHEET_CLEANUP_LOADED = true;
@@ -26,6 +26,7 @@ var LOTTEON_V653_CORE_VISIBLE_SHEETS = [
   '미정산_쿠팡계정별',
   '부가세_신고자료',
   '부가세_상품별',
+  '부가세_기간별',
   '시트별_금액검증'
 ];
 
@@ -195,7 +196,7 @@ function cleanupOperationSheets_v653(showAlert) {
       '숨김 시트: ' + hidden.length + '개\n' +
       '삭제 시트: ' + deleted.length + '개\n' +
       (failed.length ? '\n실패: ' + failed.slice(0, 5).join('\n') : '') +
-      '\n\n표시 기준: 운영 핵심 10개 시트'
+      '\n\n표시 기준: 운영 핵심 ' + LOTTEON_V653_CORE_VISIBLE_SHEETS.length + '개 시트'
     );
   }
   return { ok: true, version: 'v6.53', shown: shown, hidden: hidden, deleted: deleted, failed: failed };
@@ -213,3 +214,4 @@ function shouldDeleteSheet_v653_(name) {
 function safeAlert_v653_(message) {
   try { SpreadsheetApp.getUi().alert(message); } catch (e) {}
 }
+
