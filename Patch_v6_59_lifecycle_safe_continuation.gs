@@ -1,65 +1,65 @@
-/** v6.59 Issue #18: keep dashboard fast path synchronous; continue lifecycle once. */
-var LOTTEON_V659_LIFECYCLE_STATE_KEY = 'LOTTEON_V659_BRAND_LIFECYCLE_STATE';
-var LOTTEON_V659_LIFECYCLE_HANDLER = 'continueBrandLifecycleDashboard_v659_';
-var LOTTEON_V659_LIFECYCLE_GUARD_MS = 45000;
-var LOTTEON_V659_LIFECYCLE_ROWS_PER_TICK = 200;
-var LOTTEON_V659_TIMING_KEY = 'LOTTEON_V659_DASHBOARD_TIMING';
-var __v659Timing_ = null;
-var __baseRefreshDashboardFastOnly_v659_ = typeof refreshDashboardFastOnly === 'function' ? refreshDashboardFastOnly : null;
-var __baseDashboardCore_v659_ = typeof __baseRebuildDashboardSingleSource_v658_ === 'function' ? __baseRebuildDashboardSingleSource_v658_ : (typeof rebuildDashboardSingleSource_v628_ === 'function' ? rebuildDashboardSingleSource_v628_ : null);
-var __baseSalesAgg_v659_ = typeof buildSingleSourceSalesAgg_v628_ === 'function' ? buildSingleSourceSalesAgg_v628_ : null;
-var __baseFilterAgg_v659_ = typeof aggregateFiltersByBrand_v611_ === 'function' ? aggregateFiltersByBrand_v611_ : null;
+/** v6.59 Issue #18: diagnostic core phases and snapshot-based lifecycle continuation. */
+var LOTTEON_V659_VERSION = 'v6.59';
+var LOTTEON_V659_STATE_KEY = 'LOTTEON_V659_BRAND_LIFECYCLE_STATE';
+var LOTTEON_V659_HANDLER = 'continueBrandLifecycleDashboard_v659_';
+var LOTTEON_V659_STATUS_SHEET = '브랜드운영_자동상태';
+var LOTTEON_V659_SNAPSHOT_SHEET = '브랜드운영_스냅샷';
+var LOTTEON_V659_ROWS_PER_TICK = 200;
+var LOTTEON_V659_MAX_NO_PROGRESS = 3;
+var __baseCoreDashboard_v659_ = typeof __baseRebuildDashboardSingleSource_v658_ === 'function' ? __baseRebuildDashboardSingleSource_v658_ : (typeof rebuildDashboardSingleSource_v628_ === 'function' ? rebuildDashboardSingleSource_v628_ : null);
 
-function v659Timed_(name, fn) { var started = Date.now(); var value = fn(); if (__v659Timing_) __v659Timing_.steps[name] = (__v659Timing_.steps[name] || 0) + (Date.now() - started); return value; }
-if (__baseSalesAgg_v659_) buildSingleSourceSalesAgg_v628_ = function() { return v659Timed_('singleSourceSalesAggMs', function() { return __baseSalesAgg_v659_.apply(this, arguments); }.bind(this)); };
-if (__baseFilterAgg_v659_) aggregateFiltersByBrand_v611_ = function() { return v659Timed_('filterAggMs', function() { return __baseFilterAgg_v659_.apply(this, arguments); }.bind(this)); };
-// Bypass v6.58's immediate append wrapper. The original v6.28 core dashboard stays synchronous.
-if (__baseDashboardCore_v659_) rebuildDashboardSingleSource_v628_ = function() { return v659Timed_('coreDashboardMs', function() { return __baseDashboardCore_v659_.apply(this, arguments); }.bind(this)); };
-if (__baseRefreshDashboardFastOnly_v659_) refreshDashboardFastOnly = function() {
-  __v659Timing_ = { startedAt:new Date().toISOString(), startedMs:Date.now(), steps:{} };
-  try {
-    var result = __baseRefreshDashboardFastOnly_v659_.apply(this, arguments);
-    __v659Timing_.steps.fastDashboardTotalMs = Date.now() - __v659Timing_.startedMs;
-    scheduleBrandLifecycleContinuation_v659_(SpreadsheetApp.getActive(), __v659Timing_);
-    return result;
-  } finally { __v659Timing_ = null; }
-};
+// Do not let v6.58 append the full lifecycle table during the core path.
+if (__baseCoreDashboard_v659_) rebuildDashboardSingleSource_v628_ = function(salesAgg, filterAgg) { return __baseCoreDashboard_v659_.apply(this, arguments); };
 
-function getLifecycleState_v659_() { var text = PropertiesService.getScriptProperties().getProperty(LOTTEON_V659_LIFECYCLE_STATE_KEY); try { return text ? JSON.parse(text) : null; } catch (e) { return null; } }
-function saveLifecycleState_v659_(state) { PropertiesService.getScriptProperties().setProperty(LOTTEON_V659_LIFECYCLE_STATE_KEY, JSON.stringify(state)); return state; }
-function clearLifecycleTriggers_v659_() { ScriptApp.getProjectTriggers().forEach(function(trigger) { if (trigger.getHandlerFunction() === LOTTEON_V659_LIFECYCLE_HANDLER) ScriptApp.deleteTrigger(trigger); }); }
-function scheduleLifecycleTrigger_v659_() { clearLifecycleTriggers_v659_(); ScriptApp.newTrigger(LOTTEON_V659_LIFECYCLE_HANDLER).timeBased().after(1000).create(); }
-function scheduleBrandLifecycleContinuation_v659_(ss, timing) {
-  clearLifecycleTriggers_v659_();
-  var state = { status:'pending', spreadsheetId:ss.getId(), requestedAt:new Date().toISOString(), timing:timing || {}, lifecycleRows:0, nextIndex:0, startRow:0, lifecycleMs:0, lastError:'' };
-  saveLifecycleState_v659_(state); PropertiesService.getScriptProperties().setProperty(LOTTEON_V659_TIMING_KEY, JSON.stringify(timing || {})); scheduleLifecycleTrigger_v659_();
-  return state;
-}
-function continueBrandLifecycleDashboard_v659_() {
-  var state = getLifecycleState_v659_(); if (!state || state.status === 'done') { clearLifecycleTriggers_v659_(); return { skipped:true }; }
-  clearLifecycleTriggers_v659_(); var started = Date.now();
+function v659Now_() { return new Date().toISOString(); }
+function v659RunId_() { return String(Date.now()) + '-' + Math.random().toString(36).slice(2, 9); }
+function v659Props_() { return PropertiesService.getScriptProperties(); }
+function getLifecycleState_v659_() { try { var text = v659Props_().getProperty(LOTTEON_V659_STATE_KEY); return text ? JSON.parse(text) : null; } catch (e) { return null; } }
+function saveLifecycleState_v659_(state) { v659Props_().setProperty(LOTTEON_V659_STATE_KEY, JSON.stringify(state)); return state; }
+function lifecycleStateTemplate_v659_(ss) { return { version:LOTTEON_V659_VERSION, runId:v659RunId_(), spreadsheetId:ss.getId(), status:'running', phase:'core_init', steps:{}, lifecycleRows:0, nextIndex:0, snapshotReady:false, triggerScheduled:false, noProgressAttempts:0, lastProgressAt:v659Now_(), lastError:'', completedAt:'' }; }
+function clearLifecycleTriggers_v659_() { ScriptApp.getProjectTriggers().forEach(function(t) { if (t.getHandlerFunction() === LOTTEON_V659_HANDLER) ScriptApp.deleteTrigger(t); }); }
+function scheduleLifecycleTrigger_v659_(state) { clearLifecycleTriggers_v659_(); ScriptApp.newTrigger(LOTTEON_V659_HANDLER).timeBased().after(1000).create(); state.triggerScheduled = true; saveLifecycleState_v659_(state); return state; }
+function writeLifecycleStatus_v659_(ss, state) { var sheet = ss.getSheetByName(LOTTEON_V659_STATUS_SHEET) || ss.insertSheet(LOTTEON_V659_STATUS_SHEET); var rows = [['항목','값'],['version',state.version],['status',state.status],['phase',state.phase],['runId',state.runId],['singleSourceSalesAggMs',state.steps.singleSourceSalesAggMs || 0],['filterAggMs',state.steps.filterAggMs || 0],['coreDashboardMs',state.steps.coreDashboardMs || 0],['brandMarginMs',state.steps.brandMarginMs || 0],['unsettledMs',state.steps.unsettledMs || 0],['validationMs',state.steps.validationMs || 0],['formatMs',state.steps.formatMs || 0],['lifecycleRows',state.lifecycleRows || 0],['nextIndex',state.nextIndex || 0],['triggerScheduled',state.triggerScheduled ? 'Y' : 'N'],['lastProgressAt',state.lastProgressAt || ''],['lastError',state.lastError || ''],['completedAt',state.completedAt || '']]; sheet.clearContents(); sheet.getRange(1,1,rows.length,2).setValues(rows); sheet.setFrozenRows(1); return state; }
+function saveStatus_v659_(ss, state) { saveLifecycleState_v659_(state); writeLifecycleStatus_v659_(ss, state); return state; }
+function runPhase_v659_(ss, state, phase, fn) { state.phase = phase + ':start'; state.lastProgressAt = v659Now_(); saveStatus_v659_(ss, state); var started = Date.now(); var result = fn(); state.steps[phase + 'Ms'] = Date.now() - started; state.phase = phase + ':done'; state.lastProgressAt = v659Now_(); saveStatus_v659_(ss, state); return result; }
+function useSpreadsheetContext_v659_(ss, fn) { if (SpreadsheetApp.setActiveSpreadsheet) SpreadsheetApp.setActiveSpreadsheet(ss); return fn(); }
+
+function refreshDashboardFastOnly() {
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return { ok:false, busy:true };
+  var ss = SpreadsheetApp.getActive(), state = lifecycleStateTemplate_v659_(ss);
   try {
-    var ss = SpreadsheetApp.openById(state.spreadsheetId), sales = buildSingleSourceSalesAgg_v628_(), filters = aggregateFiltersByBrand_v611_();
-    var result = writeBrandLifecycleChunk_v659_(ss, sales, filters, state, started);
-    state.lifecycleRows = result.rows; state.lifecycleMs += Date.now() - started; state.lastError = '';
-    if (result.done) { state.status = 'done'; state.completedAt = new Date().toISOString(); saveLifecycleState_v659_(state); clearLifecycleTriggers_v659_(); }
-    else { state.status = 'pending'; saveLifecycleState_v659_(state); scheduleLifecycleTrigger_v659_(); }
-    return result;
-  } catch (e) {
-    state.status = 'failed'; state.lastError = String(e && e.message ? e.message : e); state.failedAt = new Date().toISOString(); saveLifecycleState_v659_(state); clearLifecycleTriggers_v659_(); throw e;
-  }
+    clearLifecycleTriggers_v659_(); saveStatus_v659_(ss, state);
+    var sales = runPhase_v659_(ss, state, 'singleSourceSalesAgg', function() { return useSpreadsheetContext_v659_(ss, function() { return buildSingleSourceSalesAgg_v628_(); }); });
+    var filters = runPhase_v659_(ss, state, 'filterAgg', function() { return useSpreadsheetContext_v659_(ss, function() { return aggregateFiltersByBrand_v611_(); }); });
+    runPhase_v659_(ss, state, 'coreDashboard', function() { return rebuildDashboardSingleSource_v628_(sales, filters); });
+    runPhase_v659_(ss, state, 'brandMargin', function() { return buildBrandMarginSingleSource_v628_(sales); });
+    if (typeof buildUnsettledSettlementByAccountSheet_v616_ === 'function') runPhase_v659_(ss, state, 'unsettled', function() { return buildUnsettledSettlementByAccountSheet_v616_(sales); });
+    runPhase_v659_(ss, state, 'validation', function() { return buildFinancialValidationSheets_v628_(sales); });
+    if (typeof applyFastOutputSheetFormatting_v620_ === 'function') runPhase_v659_(ss, state, 'format', function() { return applyFastOutputSheetFormatting_v620_(); });
+    state.status = 'pending'; state.phase = 'lifecycle_snapshot:queued'; state.lastProgressAt = v659Now_(); scheduleLifecycleTrigger_v659_(state); writeLifecycleStatus_v659_(ss, state);
+    try { ss.toast('핵심 대시보드 완료. 브랜드운영 자동 이어실행을 예약했습니다.', 'LOTTEON', 5); } catch (ignore) {}
+    return { ok:true, coreDone:true, runId:state.runId };
+  } catch (e) { state.status = 'failed'; state.lastError = String(e && e.message ? e.message : e); state.phase = state.phase || 'core:error'; state.triggerScheduled = false; clearLifecycleTriggers_v659_(); saveStatus_v659_(ss, state); throw e;
+  } finally { lock.releaseLock(); }
 }
-function writeBrandLifecycleChunk_v659_(ss, salesAgg, filterAgg, state, started) {
-  var sheet = ss.getSheetByName(CONFIG.SHEETS.DASHBOARD); if (!sheet) return { rows:0, done:true };
-  var rules = loadLifecycleRules_v658_(ss), rows = buildBrandLifecycleRows_v658_(salesAgg || {}, filterAgg || {}, lifecycleToday_v658_(), rules);
-  var headers = ['구분','브랜드명','대표검색필터명','계정ID','수집수','최초수집일','최초수집일 출처','경과일','매출품목수','순수매출액','30일환산 매출품목수','30일환산 순수매출액','운영구분','운영구분 사유','메모'];
-  if (!state.startRow) { state.startRow = sheet.getLastRow() + 2; sheet.getRange(state.startRow,1,1,headers.length).setValues([headers]).setBackground('#d9eaf7').setFontWeight('bold'); }
-  if (Date.now() - started >= LOTTEON_V659_LIFECYCLE_GUARD_MS) return { rows:rows.length, done:false, guarded:true };
-  var from = Number(state.nextIndex || 0), to = Math.min(rows.length, from + LOTTEON_V659_LIFECYCLE_ROWS_PER_TICK), chunk = rows.slice(from, to).map(function(r) { return ['브랜드운영',r.brand,r.filterName,r.accountId,r.collectCount,r.firstDate,r.firstSource,r.elapsed == null ? '' : r.elapsed,r.products,r.sales,r.products30,r.sales30,r.status,r.reason,r.memo]; });
-  if (chunk.length) { sheet.getRange(state.startRow + 1 + from,1,chunk.length,headers.length).setValues(chunk); sheet.getRange(state.startRow + 1 + from,10,chunk.length,1).setNumberFormat('#,##0'); sheet.getRange(state.startRow + 1 + from,11,chunk.length,1).setNumberFormat('0.0'); sheet.getRange(state.startRow + 1 + from,12,chunk.length,1).setNumberFormat('#,##0'); }
-  state.nextIndex = to;
-  if (to < rows.length) return { rows:rows.length, done:false, nextIndex:to };
-  applyLifecycleConditionalFormats_v658_(sheet, state.startRow + 1, rows.length);
-  return { rows:rows.length, done:true, expansion:rows.filter(function(r){return r.status==='확장';}).length, maintain:rows.filter(function(r){return r.status==='유지';}).length, exit:rows.filter(function(r){return r.status==='퇴출';}).length };
+
+function snapshotHeaders_v659_() { return ['구분','브랜드명','대표검색필터명','계정ID','수집수','최초수집일','최초수집일 출처','경과일','매출품목수','순수매출액','30일환산 매출품목수','30일환산 순수매출액','운영구분','운영구분 사유','메모']; }
+function snapshotRows_v659_(sales, filters, ss) { var rules = loadLifecycleRules_v658_(ss); return buildBrandLifecycleRows_v658_(sales || {}, filters || {}, lifecycleToday_v658_(), rules).map(function(r) { return ['브랜드운영',r.brand,r.filterName,r.accountId,r.collectCount,r.firstDate,r.firstSource,r.elapsed == null ? '' : r.elapsed,r.products,r.sales,r.products30,r.sales30,r.status,r.reason,r.memo]; }); }
+function prepareLifecycleSnapshot_v659_(ss, state) { var sales = useSpreadsheetContext_v659_(ss, function() { return buildSingleSourceSalesAgg_v628_(); }), filters = useSpreadsheetContext_v659_(ss, function() { return aggregateFiltersByBrand_v611_(); }), rows = snapshotRows_v659_(sales, filters, ss), sheet = ss.getSheetByName(LOTTEON_V659_SNAPSHOT_SHEET) || ss.insertSheet(LOTTEON_V659_SNAPSHOT_SHEET), headers = snapshotHeaders_v659_(); sheet.clearContents(); sheet.getRange(1,1,1,headers.length).setValues([headers]); if (rows.length) sheet.getRange(2,1,rows.length,headers.length).setValues(rows); try { sheet.hideSheet(); } catch (e) {} state.lifecycleRows = rows.length; state.snapshotReady = true; state.nextIndex = 0; return rows.length; }
+function writeLifecycleChunk_v659_(ss, state) { var source = ss.getSheetByName(LOTTEON_V659_SNAPSHOT_SHEET), dashboard = ss.getSheetByName(CONFIG.SHEETS.DASHBOARD), headers = snapshotHeaders_v659_(); if (!source || !dashboard) throw new Error('lifecycle snapshot/dashboard missing'); if (!state.dashboardStartRow) { state.dashboardStartRow = dashboard.getLastRow() + 2; dashboard.getRange(state.dashboardStartRow,1,1,headers.length).setValues([headers]).setBackground('#d9eaf7').setFontWeight('bold'); } var from = Number(state.nextIndex || 0), count = Math.min(LOTTEON_V659_ROWS_PER_TICK, Math.max(0, state.lifecycleRows - from)); if (count) { var rows = source.getRange(2 + from,1,count,headers.length).getValues(); dashboard.getRange(state.dashboardStartRow + 1 + from,1,count,headers.length).setValues(rows); dashboard.getRange(state.dashboardStartRow + 1 + from,10,count,1).setNumberFormat('#,##0'); dashboard.getRange(state.dashboardStartRow + 1 + from,11,count,1).setNumberFormat('0.0'); dashboard.getRange(state.dashboardStartRow + 1 + from,12,count,1).setNumberFormat('#,##0'); state.nextIndex += count; state.lastProgressAt = v659Now_(); state.noProgressAttempts = 0; } else state.noProgressAttempts += 1; return state.nextIndex >= state.lifecycleRows; }
+function continueBrandLifecycleDashboard_v659_(expectedRunId) {
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return { ok:false, busy:true };
+  var state = getLifecycleState_v659_();
+  try {
+    if (!state || state.status === 'done' || state.status === 'failed' || (expectedRunId && expectedRunId !== state.runId)) return { skipped:true };
+    clearLifecycleTriggers_v659_(); state.triggerScheduled = false; var ss = SpreadsheetApp.openById(state.spreadsheetId); if (expectedRunId && expectedRunId !== state.runId) return { skipped:true };
+    if (!state.snapshotReady) { runPhase_v659_(ss, state, 'lifecycle_snapshot', function() { return prepareLifecycleSnapshot_v659_(ss, state); }); }
+    state.phase = 'lifecycle_publish:start'; saveStatus_v659_(ss, state); var done = writeLifecycleChunk_v659_(ss, state); state.phase = done ? 'lifecycle_publish:done' : 'lifecycle_publish:pending';
+    if (state.noProgressAttempts >= LOTTEON_V659_MAX_NO_PROGRESS) { state.status = 'failed'; state.lastError = 'lifecycle 무진행 재예약 제한 초과'; clearLifecycleTriggers_v659_(); }
+    else if (done) { state.status = 'done'; state.completedAt = v659Now_(); applyLifecycleConditionalFormats_v658_(ss.getSheetByName(CONFIG.SHEETS.DASHBOARD), state.dashboardStartRow + 1, state.lifecycleRows); clearLifecycleTriggers_v659_(); }
+    else { state.status = 'pending'; scheduleLifecycleTrigger_v659_(state); }
+    writeLifecycleStatus_v659_(ss, state); return { ok:true, done:done, rows:state.lifecycleRows, nextIndex:state.nextIndex, runId:state.runId };
+  } catch (e) { if (state) { state.status='failed'; state.lastError=String(e && e.message ? e.message : e); state.triggerScheduled=false; clearLifecycleTriggers_v659_(); try { writeLifecycleStatus_v659_(SpreadsheetApp.openById(state.spreadsheetId), state); } catch (ignore) {} } throw e;
+  } finally { lock.releaseLock(); }
 }
 
