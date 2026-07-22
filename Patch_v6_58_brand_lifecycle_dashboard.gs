@@ -32,7 +32,8 @@ function canonicalLifecycleBrand_v658_(filterName, explicitBrand) {
   return { brand:fallback, parsed:parsed, memo:'검색필터명 파싱불가: 명시적 브랜드명 fallback' };
 }
 
-function lifecycleBrandKey_v658_(brand) { return String(brand || '').toLowerCase().replace(/\s+/g, '').trim(); }
+function lifecycleBrandKey_v658_(brand) { if (typeof normalizeBrandKey_v611_ === 'function') return normalizeBrandKey_v611_(brand); if (typeof normalizeBrandKey_v613_ === 'function') return normalizeBrandKey_v613_(brand); if (typeof brandKey_v628_ === 'function') return brandKey_v628_(brand); return String(brand || '').toLowerCase().replace(/\s+/g, '').replace(/[\[\]\(\)\{\}\-_]/g, '').trim(); }
+function chooseLifecycleRepresentative_v658_(filters) { if (typeof chooseRepresentativeFilter_v611_ === 'function') return chooseRepresentativeFilter_v611_(filters); return (filters || []).slice().sort(function(a, b) { return Number(b.collectCount || 0) - Number(a.collectCount || 0) || Number(b.managedScore || 0) - Number(a.managedScore || 0) || String(a.filterName || '').localeCompare(String(b.filterName || '')); })[0] || null; }
 function lifecycleDate_v658_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return Utilities.formatDate(value, Session.getScriptTimeZone() || 'Asia/Seoul', 'yyyy-MM-dd');
   var match = String(value || '').match(/(20\d{2})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
@@ -44,7 +45,7 @@ function aggregateLifecycleFilters_v658_(base) {
   (base && base.rows || []).forEach(function(row) {
     var canonical = canonicalLifecycleBrand_v658_(row.filterName, row.brand);
     if (!canonical.brand) return;
-    var item = { filterName:row.filterName, brand:canonical.brand, key:lifecycleBrandKey_v658_(canonical.brand), accountId:row.accountId || '', collectCount:Number(row.collectCount || 0), recentDate:lifecycleDate_v658_(row.recentDate), createDate:lifecycleDate_v658_(row.createDate), memo:canonical.memo };
+    var item = { filterName:row.filterName, brand:canonical.brand, key:lifecycleBrandKey_v658_(canonical.brand), accountId:row.accountId || '', collectCount:Number(row.collectCount || 0), managedScore:Number(row.managedScore || 0), recentDate:lifecycleDate_v658_(row.recentDate), createDate:lifecycleDate_v658_(row.createDate), memo:canonical.memo };
     result.rows.push(item); result.totalCollectCount += item.collectCount;
     var b = result.byBrand[item.key] || (result.byBrand[item.key] = { brand:item.brand, key:item.key, collectCount:0, filters:[], accountIds:{}, latestRecentDate:'', earliestCreateDate:'', earliestRecentDate:'', representativeFilterName:'', representativeAccountId:'', diagnosticMemo:'' });
     b.collectCount += item.collectCount; b.filters.push(item); if (item.accountId) b.accountIds[item.accountId] = true;
@@ -55,7 +56,7 @@ function aggregateLifecycleFilters_v658_(base) {
   });
   Object.keys(result.byBrand).forEach(function(key) {
     var b = result.byBrand[key];
-    var rep = b.filters.slice().sort(function(a,b) { return b.collectCount - a.collectCount || String(a.filterName).localeCompare(String(b.filterName)); })[0];
+    var rep = chooseLifecycleRepresentative_v658_(b.filters);
     b.representativeFilterName = rep ? rep.filterName : ''; b.representativeAccountId = rep ? rep.accountId : '';
     b.firstCollectionDate = b.earliestCreateDate || b.earliestRecentDate || '';
     b.firstCollectionSource = b.earliestCreateDate ? 'API_필터생성일' : (b.earliestRecentDate ? 'API_최근수집일자 fallback' : '최초수집일 미확인');
