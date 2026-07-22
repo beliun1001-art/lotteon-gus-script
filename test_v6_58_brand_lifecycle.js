@@ -10,6 +10,12 @@ assert.equal(forest.latestRecentDate,'2026-07-02'); assert.equal(forest.earliest
 // aggregateFiltersByBrand_v611_ output dates are normalized strings; canonical re-aggregation must preserve product-rotation recent date.
 const baseOutput={rows:[{filterName:'롯백_03_2_숲_01',brand:'2_숲_01',accountId:'a',collectCount:1,createDate:'2026-06-07',recentDate:'2026-06-11'},{filterName:'롯백_01_4_숲',brand:'4_숲',accountId:'b',collectCount:1,createDate:'2026-07-01',recentDate:'2026-07-21'}]};
 assert.equal(ctx.aggregateLifecycleFilters_v658_(baseOutput).byBrand['숲'].latestRecentDate,'2026-07-21');
+const hyphen=ctx.aggregateLifecycleFilters_v658_({rows:[{filterName:'롯백_03_2_브랜드-A_01',brand:'2_브랜드-A_01',accountId:'a',collectCount:1,managedScore:0}]});
+assert.equal(hyphen.byBrand[ctx.lifecycleBrandKey_v658_('브랜드-A')].brand,'브랜드-A');
+assert.equal(ctx.lifecycleBrandKey_v658_('브랜드-A'),ctx.lifecycleBrandKey_v658_('브랜드_A'));
+assert.equal(ctx.parseLifecycleFilterName_v658_('롯백_03_2_브랜드_A_01').brand,'브랜드_A'); // display underscore remains untouched
+const managed=ctx.aggregateLifecycleFilters_v658_({rows:[{filterName:'롯백_03_2_동률_01',brand:'동률',accountId:'low',collectCount:10,managedScore:1},{filterName:'롯백_01_4_동률',brand:'동률',accountId:'high',collectCount:10,managedScore:9}]});
+assert.equal(managed.byBrand['동률'].representativeFilterName,'롯백_01_4_동률'); assert.equal(managed.byBrand['동률'].representativeAccountId,'high');
 const criteriaValues=[['기준키','기준값'],['확장최소경과일',10],['확장30일환산순수매출액','500,000'],['퇴출최소경과일',20]];
 const criteriaSheet={getLastRow:()=>criteriaValues.length,getDataRange:()=>({getValues:()=>criteriaValues})};
 const override=ctx.loadLifecycleRules_v658_({getSheetByName:name=>name==='기준'?criteriaSheet:null});
@@ -32,5 +38,5 @@ ctx.applyLifecycleConditionalFormats_v658_(formatSheet,10,2); const firstCount=s
 assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.lifecycleStatusFormatSpecs_v658_().map(x=>x.text))),['확장','유지','퇴출']);
 ctx.CONFIG={};
 assert.equal(ctx.decideLifecycle_v658_(0,100,9999999,'2026-07-21').status,'유지'); assert.equal(ctx.decideLifecycle_v658_(29,100,9999999,'2026-06-22').status,'유지'); assert.equal(ctx.decideLifecycle_v658_(30,0,1000000,'2026-06-21').status,'확장'); assert.equal(ctx.decideLifecycle_v658_(45,0,0,'2026-06-06').status,'퇴출'); assert.equal(ctx.decideLifecycle_v658_(null,0,0,'').status,'유지');
-console.log('v6.58 lifecycle mock: OK (product distinct, conditional idempotence, brand criteria keys, contract/recent-date, parser, decisions)');
+console.log('v6.58 lifecycle mock: OK (key contract, managed-score representative, product distinct, conditional idempotence, brand criteria keys, parser, decisions)');
 
