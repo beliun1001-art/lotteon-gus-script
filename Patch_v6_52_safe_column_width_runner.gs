@@ -172,7 +172,7 @@ function applySafeWidthsToSheet_v652_(sheet) {
 function getSafeWidthTargetSheets_v652_(ss) {
   var preferred = [
     '대시보드', '브랜드별_마진율', '미정산_쿠팡계정별', '쿠팡재전송_로그',
-    '부가세_신고자료', '부가세_상품별', '부가세_기간별', '사업자별_계정별_써머리',
+    '부가세_신고자료', '부가세_상품별', '부가세_기간별', '브랜드운영_자동상태', '사업자별_계정별_써머리',
     '사업자번호_매핑검증', '필터별_상품수', '매출데이터_붙여넣기',
     '매출데이터_정리', '통합_브랜드요약', '수동입력/API검증', '검색필터_리포트'
   ];
@@ -281,4 +281,3 @@ function writeSafeWidthStatus_v652_(ss, state, memo) {
 }
 
 function safeWidthAlert_v652_(message) { try { SpreadsheetApp.getUi().alert(message); } catch (e) {} }
-
