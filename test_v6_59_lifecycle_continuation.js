@@ -15,6 +15,12 @@ const busyState={runId:'busy-run',spreadsheetId:'ss',status:'pending',snapshotRe
 ctx.LockService={getScriptLock:()=>({tryLock:()=>false,releaseLock:()=>{}})};
 const busyResult=ctx.continueBrandLifecycleDashboard_v659_(); assert.equal(busyResult.busy,true); assert.equal(busyResult.rescheduled,true); assert.equal(triggers.length,1); assert.equal(triggers[0].delay,ctx.LOTTEON_V659_SNAPSHOT_WATCHDOG_DELAY_MS); ctx.clearLifecycleTriggers_v659_();
 
+// The busy handler may have read an old pending state while the lock owner finishes.
+// Its trigger-only reschedule must not write that stale object back over the latest state.
+const staleBusyState={runId:'stale-run',spreadsheetId:'ss',status:'pending',snapshotReady:false}, completedState={runId:'stale-run',spreadsheetId:'ss',status:'done',snapshotReady:true,completedAt:'now'}; const realGetState=ctx.getLifecycleState_v659_;
+ctx.getLifecycleState_v659_=()=>{ctx.saveLifecycleState_v659_(completedState);return staleBusyState;};
+ctx.continueBrandLifecycleDashboard_v659_(); assert.deepStrictEqual(JSON.parse(props[ctx.LOTTEON_V659_STATE_KEY]),completedState); assert.equal(triggers.length,1); ctx.clearLifecycleTriggers_v659_(); ctx.getLifecycleState_v659_=realGetState;
+
 // Model a hard timeout that left snapshotAttempts=1 and its watchdog pending. The next
 // production-style parameterless handler re-enters, increments attempts, then clears the
 // watchdog after a normal snapshot/publish completion.
@@ -23,4 +29,4 @@ ctx.LockService={getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})}; ctx
 const retryResult=ctx.continueBrandLifecycleDashboard_v659_(), savedRetry=ctx.getLifecycleState_v659_(); assert.equal(retryResult.done,true); assert.equal(savedRetry.snapshotAttempts,2); assert.equal(savedRetry.status,'done'); assert.equal(triggers.length,0);
 
 const cleanupSource=fs.readFileSync('Patch_v6_53_vat_filter_and_sheet_cleanup.gs','utf8'), widthSource=fs.readFileSync('Patch_v6_52_safe_column_width_runner.gs','utf8'), lifecycleSource=fs.readFileSync('Patch_v6_59_lifecycle_safe_continuation.gs','utf8'); assert(cleanupSource.includes("'브랜드운영_자동상태'")); assert(!cleanupSource.includes("'브랜드운영_스냅샷'")); assert(widthSource.includes("'브랜드운영_자동상태'")); assert(lifecycleSource.includes('sheet.hideSheet()'));
-console.log('v6.59 continuation mock: OK (actual 450 chunk offsets 200/200/50, watchdog lock-busy retry, timeout re-entry attempts=2, normal completion triggers=0, status visible/snapshot hidden allowlist)');
+console.log('v6.59 continuation mock: OK (actual 450 chunk offsets 200/200/50, watchdog lock-busy retry without stale-state overwrite, timeout re-entry attempts=2, normal completion triggers=0, status visible/snapshot hidden allowlist)');
