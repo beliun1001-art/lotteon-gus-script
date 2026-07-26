@@ -27,6 +27,7 @@ var LOTTEON_V653_CORE_VISIBLE_SHEETS = [
   '부가세_신고자료',
   '부가세_상품별',
   '부가세_기간별',
+  '브랜드운영_자동상태',
   '시트별_금액검증'
 ];
 
@@ -214,4 +215,3 @@ function shouldDeleteSheet_v653_(name) {
 function safeAlert_v653_(message) {
   try { SpreadsheetApp.getUi().alert(message); } catch (e) {}
 }
-
