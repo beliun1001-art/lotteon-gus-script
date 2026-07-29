@@ -370,7 +370,7 @@ function noMatch_v660_(reason) { return {status:'NO_MATCH',reason:reason,candida
 function isCancellationHistoryRow_v660_(h) {
   var s=compact_v660_(h.status);
   if (!s) return false;
-  if (s.indexOf('취소있음')>=0) return false; // original approval carrying later cancellation metadata
+  if (s.indexOf('취소있음')>=0) return false;
   return s.indexOf('취소')>=0 || s.indexOf('환불')>=0;
 }
 function isNonCardEvidence_v660_(h) {
