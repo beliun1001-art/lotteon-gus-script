@@ -98,7 +98,7 @@ function matchVatOrderCardForwardAllocated_v663_(order, history, master, used) {
     });
 
     if (issuer) {
-      var issuerRows = base.filter(function(h) { return normalizeCardCompany_v660_(h.company) === issuer || h.nonCard; });
+      var issuerRows = base.filter(function(h) { return !h.nonCard && normalizeCardCompany_v660_(h.company) === issuer; });
       if (issuerRows.length) base = issuerRows;
     } else if (order.lottePayment) {
       var paymentRows = filterEvidenceByLottePayment_v660_(base, order.lottePayment);
