@@ -10,6 +10,7 @@
  * - Card-statement evidence must have the exact purchase amount and LOTTE evidence.
  * - Search only from market order date forward, never before it.
  * - Evidence rows are allocated one-to-one and cannot be reused by multiple resale orders.
+ * - Fully cancelled approvals are never eligible evidence.
  * - Earliest evidence day wins. Multiple candidates are auto-resolved only when every candidate
  *   on that earliest day is the same physical card/payment identity; otherwise AMBIGUOUS.
  * - Search window is 0..7 days to cover delayed sourcing while keeping evidence bounded.
@@ -81,6 +82,17 @@ function allocateVatPurchaseCards_v663_(orders, history, master) {
   return { usedHistoryRows:Object.keys(used).length };
 }
 
+
+function isFullyCancelledHistory_v663_(h) {
+  if (!h) return false;
+  var memo = String(h.cancelMemo || h.memo || '');
+  var m = memo.match(/취소금액\s*(-?[\d,]+)/);
+  if (!m) return false;
+  var cancelAmount = Math.abs(number_v660_(m[1]));
+  var approvalAmount = Math.abs(Number(h.amount || 0));
+  return approvalAmount > 0 && cancelAmount === approvalAmount;
+}
+
 function matchVatOrderCardForwardAllocated_v663_(order, history, master, used) {
   if (!order || !order.orderDate || !Number(order.purchase || 0)) {
     return noMatch_v660_('주문일/매입금액 없음');
@@ -90,7 +102,7 @@ function matchVatOrderCardForwardAllocated_v663_(order, history, master, used) {
   for (var lag = 0; lag <= LOTTEON_V663_MAX_FORWARD_DAYS; lag++) {
     var targetDate = shiftDate_v662_(order.orderDate, lag);
     var base = (history || []).filter(function(h) {
-      if (!h || h.cancelRow || !h.lotteEvidence) return false;
+      if (!h || h.cancelRow || isFullyCancelledHistory_v663_(h) || !h.lotteEvidence) return false;
       if (used[String(h.rowNo)]) return false;
       if (h.date !== targetDate) return false;
       if (!historyMatchesAmount_v660_(h, order.purchase)) return false;
@@ -166,7 +178,7 @@ if (__baseAnalyzeUnmatchedOrder_v663_) {
     for (var lag=0; lag<=LOTTEON_V663_MAX_FORWARD_DAYS; lag++) {
       var d = shiftDate_v662_(orderDate, lag);
       var rows = (history || []).filter(function(h) {
-        return h && !h.cancelRow && h.lotteEvidence && h.date === d && historyMatchesAmount_v660_(h, purchase);
+        return h && !h.cancelRow && !isFullyCancelledHistory_v663_(h) && h.lotteEvidence && h.date === d && historyMatchesAmount_v660_(h, purchase);
       });
       counts.push(rows.length);
     }
