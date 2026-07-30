@@ -105,12 +105,13 @@ assert.strictEqual(sandbox.classifyVatTrackingPayment_v666_('롯데카드').issu
 
 {
   const history=[
-    {company:'KB국민카드',cardName:'HERITAGE Smart(할인형)',nonCard:false},
-    {company:'우리카드',cardName:'카드의정석 EVERY POINT',nonCard:false}
+    {company:'KB국민카드',cardName:'HERITAGE Smart(할인형)',cardEnd4:'4091',nonCard:false},
+    {company:'KB국민카드',cardName:'과거 다른 국민카드',cardEnd4:'1111',nonCard:false},
+    {company:'우리카드',cardName:'카드의정석 EVERY POINT',cardEnd4:'7680',nonCard:false}
   ];
   const r=sandbox.matchVatOrderCardCanonical_v664_({orderDate:'2026-06-10',lottePayment:'KB국민카드'},history,[],{});
   assert.strictEqual(lastFiltered.length,1);
-  assert.strictEqual(lastFiltered[0].company,'KB국민카드');
+  assert.strictEqual(lastFiltered[0].cardName,'HERITAGE Smart(할인형)');
   assert.ok(r.reason.includes('HERITAGE단일카드'));
 }
 
