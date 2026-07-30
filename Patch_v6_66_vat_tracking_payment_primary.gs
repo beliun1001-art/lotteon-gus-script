@@ -36,7 +36,6 @@ if (__baseVatDetailRow_v666_) {
     if (!result || !result.row || !result.row.length) return result;
     var tracking = ix && ix.v666TrackingPayment >= 0 ? cleanVatText_v648_(valueAt_v648_(row, ix.v666TrackingPayment)) : '';
     var fallback = ix && ix.v666FallbackPayment >= 0 ? cleanVatText_v648_(valueAt_v648_(row, ix.v666FallbackPayment)) : '';
-    // v6.60 appends the normalized purchase-payment value as the last VAT detail column.
     result.row[result.row.length - 1] = tracking || fallback || '';
     return result;
   };
@@ -123,6 +122,17 @@ function filterLotteCardByOrderDate_v666_(rows, orderDate, master) {
   return recognized.filter(function(h) { return lotteCardKind_v666_(h, master || []) === expected; });
 }
 
+function filterKnownSingleCard_v666_(rows, issuer, master) {
+  if (issuer !== 'KB국민카드' && issuer !== '우리카드') return rows || [];
+  var recognized = (rows || []).filter(function(h) {
+    var e = typeof enrichHistoryFromMaster_v660_ === 'function' ? enrichHistoryFromMaster_v660_(h, master || []) : h;
+    var s = compact_v660_((e.cardName || h.cardName || '') + ' ' + (e.cardNumber || h.cardNumber || '') + ' ' + (e.cardEnd4 || h.cardEnd4 || ''));
+    if (issuer === 'KB국민카드') return s.indexOf('heritage') >= 0 || s.indexOf('4091') >= 0;
+    return s.indexOf('everypoint') >= 0 || s.indexOf('카드의정석') >= 0 || s.indexOf('7680') >= 0;
+  });
+  return recognized.length ? recognized : (rows || []);
+}
+
 function filterVatHistoryByTrackingPayment_v666_(order, history, master, rule) {
   var rows = (history || []).slice();
   if (!rule || rule.kind === 'UNKNOWN') return rows;
@@ -135,6 +145,7 @@ function filterVatHistoryByTrackingPayment_v666_(order, history, master, rule) {
   if (rule.kind === 'ISSUER_CARD') {
     rows = rows.filter(function(h) { return normalizeCardCompany_v660_(h.company) === rule.issuer; });
     if (rule.issuer === '롯데카드') rows = filterLotteCardByOrderDate_v666_(rows, order && order.orderDate, master || []);
+    else rows = filterKnownSingleCard_v666_(rows, rule.issuer, master || []);
     return rows;
   }
   return rows;
