@@ -29,7 +29,7 @@ function continuePr25ProductionVatR12() {
 }
 
 function pr25r12_runProduction_(mode) {
-  var ss = SpreadsheetApp.getActive();
+  var ss = pr25r12_resolveSpreadsheet_();
   try {
     var bundle = loadLotteonRemoteBundle_();
     var prPatches = pr25r12_fetchPatchBundle_();
@@ -40,6 +40,7 @@ function pr25r12_runProduction_(mode) {
     ].join('\n');
     var result = eval(bundle + '\n\n;\n\n' + prPatches + '\n\n;\n\n' + invocation);
     var state = pr25r12_getVatState_();
+    if (state && state.spreadsheetId) ss = SpreadsheetApp.openById(state.spreadsheetId);
     pr25r12_writeStatus_(ss, state, mode === 'start' ? '첫 배치 예약 완료' : '자동 이어실행 진행', state && state.status || 'running');
     return result;
   } catch (e) {
@@ -52,6 +53,12 @@ function pr25r12_runProduction_(mode) {
     pr25r12_clearTriggers_();
     throw e;
   }
+}
+
+function pr25r12_resolveSpreadsheet_() {
+  var state = pr25r12_getVatState_();
+  if (state && state.spreadsheetId) return SpreadsheetApp.openById(state.spreadsheetId);
+  return SpreadsheetApp.getActive();
 }
 
 function pr25r12_fetchPatchBundle_() {
