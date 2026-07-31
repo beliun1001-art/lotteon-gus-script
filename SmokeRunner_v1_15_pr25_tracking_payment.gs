@@ -1,6 +1,6 @@
-/** PR #25 v6.66 tracking-payment lightweight operating smoke runner R3. */
+/** PR #25 v6.66 tracking-payment lightweight operating smoke runner R4. */
 const LOTTEON_PR25_SMOKE_RAW_BASE = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-24-tracking-payment-primary/';
-const LOTTEON_PR25_SMOKE_VERSION = 'v1.15-PR25-SMOKE-R3';
+const LOTTEON_PR25_SMOKE_VERSION = 'v1.15-PR25-SMOKE-R4';
 const LOTTEON_PR25_LIGHT_FILES = [
   'Patch_v6_48_lightweight_vat_control_tower.gs',
   'Patch_v6_57_vat_period_summary.gs',
@@ -15,13 +15,15 @@ const LOTTEON_PR25_LIGHT_FILES = [
 ];
 
 function testPr25TrackingPaymentConnection() {
+  const started = Date.now();
   const bundle = loadPr25TrackingPaymentLightBundle_();
   SpreadsheetApp.getUi().alert(
     'PR #25 경량 코드 연결 성공\n\n' +
     'Smoke Runner: ' + LOTTEON_PR25_SMOKE_VERSION + '\n' +
     'Branch Base: ' + LOTTEON_PR25_SMOKE_RAW_BASE + '\n' +
-    '로드 파일: ' + LOTTEON_PR25_LIGHT_FILES.length + '개\n' +
+    '동시 로드 파일: ' + LOTTEON_PR25_LIGHT_FILES.length + '개\n' +
     '로드 크기: ' + bundle.length.toLocaleString('ko-KR') + '자\n' +
+    '로드 시간: ' + Math.round((Date.now() - started) / 1000) + '초\n' +
     '대상 버전: v6.66'
   );
 }
@@ -111,28 +113,27 @@ function inspectPr25TrackingPaymentState() {
 }
 
 function loadPr25TrackingPaymentLightBundle_() {
-  const chunks = [];
-  for (let i = 0; i < LOTTEON_PR25_LIGHT_FILES.length; i++) {
-    chunks.push(fetchPr25TrackingPaymentText_(LOTTEON_PR25_LIGHT_FILES[i]));
-  }
+  const stamp = new Date().getTime();
+  const requests = LOTTEON_PR25_LIGHT_FILES.map(function(path) {
+    return {
+      url: LOTTEON_PR25_SMOKE_RAW_BASE + path + '?ts=' + stamp,
+      method: 'get',
+      muteHttpExceptions: true,
+      followRedirects: true
+    };
+  });
+  const responses = UrlFetchApp.fetchAll(requests);
+  const chunks = responses.map(function(response, index) {
+    const code = response.getResponseCode();
+    const text = response.getContentText('UTF-8');
+    if (code < 200 || code >= 300) {
+      throw new Error(LOTTEON_PR25_LIGHT_FILES[index] + ' 로드 실패 HTTP ' + code + '\n' + text.slice(0, 500));
+    }
+    return text;
+  });
   const bundle = chunks.join('\n\n;\n\n');
   if (bundle.indexOf('LOTTEON_PATCH_V666_VAT_TRACKING_PAYMENT_PRIMARY_LOADED') < 0) {
     throw new Error('v6.66 patch를 로드하지 못했습니다.');
   }
   return bundle;
-}
-
-function fetchPr25TrackingPaymentText_(path) {
-  const url = LOTTEON_PR25_SMOKE_RAW_BASE + path;
-  const response = UrlFetchApp.fetch(url + '?ts=' + new Date().getTime(), {
-    method: 'get',
-    muteHttpExceptions: true,
-    followRedirects: true
-  });
-  const code = response.getResponseCode();
-  const text = response.getContentText('UTF-8');
-  if (code < 200 || code >= 300) {
-    throw new Error(path + ' 로드 실패 HTTP ' + code + '\n' + url + '\n' + text.slice(0, 500));
-  }
-  return text;
 }
