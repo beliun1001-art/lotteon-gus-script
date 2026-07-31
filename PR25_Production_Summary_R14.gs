@@ -25,9 +25,7 @@ function runPr25ProductionSummaryR14() {
     ].join('\n');
     var result = eval(bundleInfo.bundle + '\n\n;\n\n' + invocation);
     var validation = pr25r14_validateOutput_(ss);
-    if (validation.blankKakaoMoneyAliasRows !== 0) {
-      throw new Error('카카오페이 페이머니 별칭 공란 행이 남았습니다: ' + validation.blankKakaoMoneyAliasRows);
-    }
+    pr25r14_assertValidation_(validation);
     pr25r14_writeStatus_(ss, 'done', 'v6.68 production 카드 요약 재생성 완료', bundleInfo.source, result, validation, '');
     return { ok:true, result:result, validation:validation };
   } catch (e) {
@@ -50,24 +48,83 @@ function pr25r14_validateOutput_(ss) {
   if (headerRow < 0) throw new Error('구매카드별 신고요약 헤더를 찾지 못했습니다.');
   var headers = values[headerRow];
   var ix = function(name) { return headers.indexOf(name); };
-  var iHalf=ix('반기'), iAlias=ix('구매카드별칭'), iName=ix('구매카드명'),
-      iStatus=ix('카드매칭상태'), iOrders=ix('주문건수');
-  var blankRows=0, kakaoRows=0, kakaoOrders=0;
+  var p = {
+    half:ix('반기'), company:ix('구매카드사'), alias:ix('구매카드별칭'),
+    name:ix('구매카드명'), end4:ix('카드번호끝4'), status:ix('카드매칭상태'),
+    orders:ix('주문건수'), sales:ix('순수매출액'), purchase:ix('매입금액'),
+    salesSupply:ix('매출공급가액'), salesVat:ix('매출부가세'),
+    settlement:ix('정산기준금액'), fee:ix('마켓수수료'),
+    purchaseSupply:ix('매입공급가액'), purchaseVat:ix('매입부가세'),
+    payable:ix('납부예상부가세'), profit:ix('예상이익'), vatProfit:ix('부가세반영예상이익')
+  };
+  var out = {
+    halfOrders:0, matched:0, nonCard:0, ambiguous:0, noMatch:0,
+    sales:0, salesSupply:0, salesVat:0, settlement:0, fee:0,
+    purchase:0, purchaseSupply:0, purchaseVat:0, payable:0, profit:0, vatProfit:0,
+    kakaoMoneySummaryRows:0, kakaoMoneyOrders:0, blankKakaoMoneyAliasRows:0,
+    invalidCardIdentityRows:0
+  };
+  function n(v) { return Math.round(Number(String(v == null ? '' : v).replace(/,/g,'')) || 0); }
   for (var i = headerRow + 1; i < values.length; i++) {
     var row = values[i];
     if (!String(row[0] || '').trim()) break;
-    if (String(row[iHalf] || '').trim() !== '상반기') continue;
-    if (String(row[iStatus] || '').trim() !== 'NON_CARD') continue;
-    if (String(row[iName] || '').trim() !== '카카오페이 페이머니') continue;
-    kakaoRows++;
-    kakaoOrders += Number(row[iOrders] || 0);
-    if (!String(row[iAlias] || '').trim()) blankRows++;
+    if (String(row[p.half] || '').trim() !== '상반기') continue;
+
+    var orders = n(row[p.orders]);
+    var status = String(row[p.status] || '').trim();
+    out.halfOrders += orders;
+    if (status === 'MATCHED') out.matched += orders;
+    else if (status === 'NON_CARD') out.nonCard += orders;
+    else if (status === 'AMBIGUOUS') out.ambiguous += orders;
+    else if (status === 'NO_MATCH') out.noMatch += orders;
+
+    out.sales += n(row[p.sales]);
+    out.salesSupply += n(row[p.salesSupply]);
+    out.salesVat += n(row[p.salesVat]);
+    out.settlement += n(row[p.settlement]);
+    out.fee += n(row[p.fee]);
+    out.purchase += n(row[p.purchase]);
+    out.purchaseSupply += n(row[p.purchaseSupply]);
+    out.purchaseVat += n(row[p.purchaseVat]);
+    out.payable += n(row[p.payable]);
+    out.profit += n(row[p.profit]);
+    out.vatProfit += n(row[p.vatProfit]);
+
+    var company = String(row[p.company] || '').trim();
+    var alias = String(row[p.alias] || '').trim();
+    var name = String(row[p.name] || '').trim();
+    var end4 = String(row[p.end4] || '').trim();
+
+    if (status === 'NON_CARD' && name === '카카오페이 페이머니') {
+      out.kakaoMoneySummaryRows++;
+      out.kakaoMoneyOrders += orders;
+      if (!alias) out.blankKakaoMoneyAliasRows++;
+    }
+    if (status === 'MATCHED') {
+      if (company === 'KB국민카드' && end4 !== '4091') out.invalidCardIdentityRows++;
+      if (company === '우리카드' && end4 !== '7680') out.invalidCardIdentityRows++;
+      if (name === 'Trip to 로카' && end4 !== '0126') out.invalidCardIdentityRows++;
+      if (name === 'LOCA LIKIT 1.2' && end4 !== '0036') out.invalidCardIdentityRows++;
+    }
   }
-  return {
-    kakaoMoneySummaryRows:kakaoRows,
-    kakaoMoneyOrders:kakaoOrders,
-    blankKakaoMoneyAliasRows:blankRows
+  return out;
+}
+
+function pr25r14_assertValidation_(v) {
+  var expected = {
+    halfOrders:1355, sales:71838700, salesSupply:65307938, salesVat:6530762,
+    settlement:64726771, fee:7111929, purchase:54807644,
+    purchaseSupply:49825146, purchaseVat:4982498, payable:1548264,
+    profit:9919127, vatProfit:8370863,
+    matched:425, nonCard:265, ambiguous:1, noMatch:664,
+    kakaoMoneySummaryRows:3, kakaoMoneyOrders:265,
+    blankKakaoMoneyAliasRows:0, invalidCardIdentityRows:0
   };
+  Object.keys(expected).forEach(function(key) {
+    if (Number(v[key] || 0) !== expected[key]) {
+      throw new Error('R14 출력검증 실패: ' + key + ' 실제 ' + Number(v[key] || 0) + ' / 기대 ' + expected[key]);
+    }
+  });
 }
 
 function pr25r14_writeStatus_(ss, status, message, bundleSource, result, validation, errorText) {
@@ -83,22 +140,24 @@ function pr25r14_writeStatus_(ss, status, message, bundleSource, result, validat
     ['단계','summary'],
     ['메시지',message || ''],
     ['상세 재생성','N'],
-    ['카드요약 행수',Number(result.summaryRows || 0)],
-    ['주문건수',Number(result.orderRows || 0)],
-    ['MATCHED',Number(result.matchedOrders || 0)],
-    ['NON_CARD',Number(result.nonCardOrders || 0)],
-    ['AMBIGUOUS',Number(result.ambiguousOrders || 0)],
-    ['NO_MATCH',Number(result.noMatchOrders || 0)],
+    ['상반기 주문건수',Number(validation.halfOrders || 0)],
+    ['상반기 MATCHED',Number(validation.matched || 0)],
+    ['상반기 NON_CARD',Number(validation.nonCard || 0)],
+    ['상반기 AMBIGUOUS',Number(validation.ambiguous || 0)],
+    ['상반기 NO_MATCH',Number(validation.noMatch || 0)],
+    ['상반기 순수매출액',Number(validation.sales || 0)],
+    ['상반기 매입금액',Number(validation.purchase || 0)],
     ['카카오머니 요약행',Number(validation.kakaoMoneySummaryRows || 0)],
     ['카카오머니 주문건수',Number(validation.kakaoMoneyOrders || 0)],
     ['카카오머니 별칭 공란행',Number(validation.blankKakaoMoneyAliasRows || 0)],
+    ['잘못된 카드식별자 행',Number(validation.invalidCardIdentityRows || 0)],
     ['마지막 오류',errorText || '']
   ];
   sheet.clearContents();
   sheet.getRange(1,1,rows.length,2).setValues(rows);
   sheet.getRange(1,1,1,2).setBackground('#d9eaf7').setFontWeight('bold');
   sheet.setFrozenRows(1);
-  sheet.setColumnWidth(1,220);
+  sheet.setColumnWidth(1,240);
   sheet.setColumnWidth(2,700);
   SpreadsheetApp.flush();
 }
