@@ -150,16 +150,18 @@ function pr25r13_readBundleCache_() {
   if (!raw) return '';
   var manifest;
   try { manifest = JSON.parse(raw); } catch (e) { return ''; }
-  if (!manifest || !manifest.chunks) return '';
+  if (!manifest || manifest.version !== PR25_R13_VERSION || !manifest.chunks) return '';
   var encoded = '';
   for (var i = 0; i < Number(manifest.chunks); i++) {
     var chunk = cache.get(PR25_R13_CACHE_PREFIX + 'CHUNK_' + i);
     if (!chunk) return '';
     encoded += chunk;
   }
+  if (Number(manifest.encodedLength || 0) !== encoded.length) return '';
   try {
     var bytes = Utilities.base64Decode(encoded);
-    return Utilities.ungzip(Utilities.newBlob(bytes)).getDataAsString('UTF-8');
+    var bundle = Utilities.ungzip(Utilities.newBlob(bytes)).getDataAsString('UTF-8');
+    return Number(manifest.sourceLength || 0) === bundle.length ? bundle : '';
   } catch (e) {
     return '';
   }
