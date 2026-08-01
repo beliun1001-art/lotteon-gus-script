@@ -8,17 +8,14 @@ function vatHalfBounds_v669_(orderDate) {
     ? { start:m[1] + '-01-01', end:m[1] + '-06-30' }
     : { start:m[1] + '-07-01', end:m[1] + '-12-31' };
 }
-
 function vatDateInSameHalf_v669_(dateText, orderDate) {
   var b = vatHalfBounds_v669_(orderDate), d = String(dateText || '');
   return !!b && !!d && d >= b.start && d <= b.end;
 }
-
 function vatMasterActiveOnDate_v669_(m, orderDate) {
   if (!m || (typeof isActiveMaster_v660_ === 'function' && !isActiveMaster_v660_(m))) return false;
   var d = String(orderDate || '');
-  if (!d || (m.startDate && String(m.startDate) > d) || (m.endDate && String(m.endDate) < d)) return false;
-  return true;
+  return !!d && !(m.startDate && String(m.startDate) > d) && !(m.endDate && String(m.endDate) < d);
 }
 
 function vatPeriodCandidateIdentity_v669_(candidate, master) {
@@ -33,8 +30,7 @@ function vatPeriodCandidateIdentity_v669_(candidate, master) {
     : String(e.cardEnd4 || candidate.cardEnd4 || '').replace(/\D/g, '').slice(-4);
   var name = String(e.cardName || candidate.cardName || '').trim();
   var alias = String(e.alias || candidate.alias || '').trim();
-  var digits = number.replace(/\D/g, '');
-  var key = company + '|';
+  var digits = number.replace(/\D/g, ''), key = company + '|';
   if (end4) key += 'END4:' + end4;
   else if (digits) key += 'NUM:' + digits;
   else if (name) key += 'NAME:' + compact_v660_(name);
@@ -46,6 +42,26 @@ function vatPeriodCandidateIdentity_v669_(candidate, master) {
       ? masterCandidateLabel_v660_(candidate)
       : (typeof historyCandidateLabel_v660_ === 'function' ? historyCandidateLabel_v660_(candidate) : key)
   };
+}
+
+function strictVatKnownCardFilter_v669_(rows, rule, orderDate, master) {
+  if (!rule || rule.kind !== 'ISSUER_CARD') return rows || [];
+  var issuer = rule.issuer, expectedEnd4 = '';
+  if (issuer === 'KB국민카드') expectedEnd4 = '4091';
+  else if (issuer === '우리카드') expectedEnd4 = '7680';
+  else if (issuer === '롯데카드') expectedEnd4 = orderDate <= '2026-05-28' ? '0126' : '0036';
+  if (!expectedEnd4) return rows || [];
+  return (rows || []).filter(function(row) {
+    var id = vatPeriodCandidateIdentity_v669_(row, master || []);
+    if (!id) return false;
+    if (id.cardEnd4 === expectedEnd4) return true;
+    var name = compact_v660_(id.cardName || '');
+    if (issuer === 'KB국민카드') return name.indexOf('heritage') >= 0;
+    if (issuer === '우리카드') return name.indexOf('everypoint') >= 0 || name.indexOf('카드의정석') >= 0;
+    if (issuer === '롯데카드' && expectedEnd4 === '0126') return name.indexOf('tripto로카') >= 0 || name.indexOf('트립투로카') >= 0;
+    if (issuer === '롯데카드' && expectedEnd4 === '0036') return name.indexOf('localikit') >= 0 || name.indexOf('로카likit') >= 0 || name.indexOf('로카리킷') >= 0;
+    return false;
+  });
 }
 
 function vatPeriodTrackingCandidates_v669_(order, history, master, rule) {
@@ -63,11 +79,8 @@ function vatPeriodTrackingCandidates_v669_(order, history, master, rule) {
       if (!vatMasterActiveOnDate_v669_(m, date) || normalizeCardCompany_v660_(m.company) !== rule.issuer) return;
       var x = {}; Object.keys(m).forEach(function(k) { x[k] = m[k]; }); x.v669Source = 'master'; rows.push(x);
     });
+    rows = strictVatKnownCardFilter_v669_(rows, rule, date, master || []);
   }
-  if (rule.kind === 'ISSUER_CARD' && rule.issuer === '롯데카드' && typeof filterLotteCardByOrderDate_v666_ === 'function')
-    rows = filterLotteCardByOrderDate_v666_(rows, date, master || []);
-  else if (rule.kind === 'ISSUER_CARD' && typeof filterKnownSingleCard_v666_ === 'function')
-    rows = filterKnownSingleCard_v666_(rows, rule.issuer, master || []);
   return rows;
 }
 
@@ -87,12 +100,10 @@ function uniqueVatPeriodCardIdentities_v669_(rows, master) {
   });
   return Object.keys(map).sort().map(function(k) { return map[k]; });
 }
-
 function vatPeriodFallbackReason_v669_(order, rule) {
   var p = typeof trackingPaymentReasonPrefix_v666_ === 'function' ? trackingPaymentReasonPrefix_v666_(order, rule) : '';
   return (p ? p + ' / ' : '') + '트래킹번호_기간단일카드_2차귀속_금액비교없음';
 }
-
 function vatPeriodBaseMatch_v669_(order, rule, status, identity) {
   identity = identity || {};
   return {
@@ -105,7 +116,6 @@ function vatPeriodBaseMatch_v669_(order, rule, status, identity) {
     trackingPayment:rule.raw || '', trackingPaymentRule:rule.kind || 'UNKNOWN', v669Fallback:true
   };
 }
-
 function ambiguousVatPeriodCards_v669_(order, rule, identities) {
   var p = typeof trackingPaymentReasonPrefix_v666_ === 'function' ? trackingPaymentReasonPrefix_v666_(order, rule) : '';
   return {
