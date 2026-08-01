@@ -1,5 +1,5 @@
 /** PR #29 operating preview smoke. Writes PR29_* sheets only; production VAT sheets are read-only. */
-const PR29_PREVIEW_VERSION = 'v1.0-PR29-V669-PREVIEW';
+const PR29_PREVIEW_VERSION = 'v1.1-PR29-V669-H1-PREVIEW';
 const PR29_PATCH_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-28-vat-period-card-fallback/Patch_v6_69_vat_tracking_period_card_fallback.gs';
 
 function runPr29PreviewSmoke() {
@@ -13,12 +13,14 @@ function runPr29PreviewSmoke() {
     'var ss=SpreadsheetApp.openById(' + JSON.stringify(spreadsheetId) + ');',
     "var detail=ss.getSheetByName('부가세_신고자료');",
     "if(!detail||detail.getLastRow()<2)throw new Error('부가세_신고자료가 없습니다.');",
-    'var orders=groupVatDetailByOrder_v660_(detail.getDataRange().getValues());',
+    'var allOrders=groupVatDetailByOrder_v660_(detail.getDataRange().getValues());',
+    'var orders=allOrders.filter(function(o){return String(o.year)==="2026"&&String(o.half)==="상반기";});',
+    'var excludedOrders=allOrders.length-orders.length;',
     'var history=loadVatCardHistory_v660_(ss);',
     'var master=loadVatCardMaster_v660_(ss);',
     'var canonical=canonicalizeVatHistory_v664_(history,master);',
     'allocateVatPurchaseCards_v664_(orders,canonical,master);',
-    'var stats={orders:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,fallback:0,fallbackMatched:0,fallbackNonCard:0,fallbackAmbiguous:0,invalidIdentity:0,invalidFallbackEvidence:0};',
+    'var stats={sourceOrders:allOrders.length,excludedOrders:excludedOrders,orders:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,fallback:0,fallbackMatched:0,fallbackNonCard:0,fallbackAmbiguous:0,invalidIdentity:0,invalidFallbackEvidence:0};',
     'var totals={sales:0,salesSupply:0,salesVat:0,settlement:0,fee:0,purchase:0,purchaseSupply:0,purchaseVat:0,payable:0,profit:0,vatProfit:0};',
     'orders.forEach(function(o){var m=o.cardMatch||noMatch_v660_("미실행");stats.orders++;if(m.status==="MATCHED"||m.status==="MASTER_MATCHED")stats.matched++;else if(m.status==="NON_CARD")stats.nonCard++;else if(m.status==="AMBIGUOUS")stats.ambiguous++;else stats.noMatch++;if(m.v669Fallback){stats.fallback++;if(m.status==="MATCHED")stats.fallbackMatched++;else if(m.status==="NON_CARD")stats.fallbackNonCard++;else if(m.status==="AMBIGUOUS")stats.fallbackAmbiguous++;if(m.approvalDate||m.approvalNo||Number(m.approvalAmount||0)!==0||String(m.reason||"").indexOf("금액비교없음")<0&&m.status!=="AMBIGUOUS")stats.invalidFallbackEvidence++;}var c=normalizeCardCompany_v660_(m.company);var e=normalizeVatCardEnd4_v667_(m.cardEnd4,m.cardNumber);if((c==="KB국민카드"&&e!=="4091")||(c==="우리카드"&&e!=="7680")||(m.cardName==="Trip to 로카"&&e!=="0126")||(m.cardName==="LOCA LIKIT 1.2"&&e!=="0036"))stats.invalidIdentity++;Object.keys(totals).forEach(function(k){totals[k]+=Number(o[k]||0);});});',
     'var summaryHeaders=vatBusinessCardHalfHeaders_v660_();',
@@ -34,7 +36,10 @@ function runPr29PreviewSmoke() {
   SpreadsheetApp.flush();
   SpreadsheetApp.getUi().alert(
     'PR #29 미리보기 완료\n\n' +
-    '주문: ' + out.stats.orders + '건\n' +
+    '검증 대상: 2026년 상반기\n' +
+    '전체 기간 주문: ' + out.stats.sourceOrders + '건\n' +
+    '대상 제외 주문: ' + out.stats.excludedOrders + '건\n' +
+    '상반기 주문: ' + out.stats.orders + '건\n' +
     'MATCHED: ' + out.stats.matched + '건\n' +
     'NON_CARD: ' + out.stats.nonCard + '건\n' +
     'AMBIGUOUS: ' + out.stats.ambiguous + '건\n' +
@@ -58,7 +63,7 @@ function pr29Validate_(out) {
   const expected = {orders:1355,sales:71838700,salesSupply:65307938,salesVat:6530762,settlement:64726771,fee:7111929,purchase:54807644,purchaseSupply:49825146,purchaseVat:4982498,payable:1548264,profit:9919127,vatProfit:8370863};
   Object.keys(expected).forEach(function(k){
     const actual = k === 'orders' ? Number(out.stats.orders||0) : Math.round(Number(out.totals[k]||0));
-    if (actual !== expected[k]) throw new Error('PR29 불변합계 검증 실패: ' + k + ' 실제 ' + actual + ' / 기대 ' + expected[k]);
+    if (actual !== expected[k]) throw new Error('PR29 상반기 불변합계 검증 실패: ' + k + ' 실제 ' + actual + ' / 기대 ' + expected[k]);
   });
   const classified = out.stats.matched + out.stats.nonCard + out.stats.ambiguous + out.stats.noMatch;
   if (classified !== out.stats.orders) throw new Error('PR29 상태 합계 불일치: ' + classified + ' / ' + out.stats.orders);
@@ -74,7 +79,8 @@ function pr29WritePreview_(ss, out) {
   const s = ss.getSheetByName('PR29_실행상태') || ss.insertSheet('PR29_실행상태');
   const rows = [
     ['항목','값'],['버전',PR29_PREVIEW_VERSION],['상태','PASS'],['운영시트 변경','없음'],
-    ['주문',out.stats.orders],['MATCHED',out.stats.matched],['NON_CARD',out.stats.nonCard],
+    ['검증 대상','2026년 상반기'],['전체 기간 주문',out.stats.sourceOrders],['대상 제외 주문',out.stats.excludedOrders],
+    ['상반기 주문',out.stats.orders],['MATCHED',out.stats.matched],['NON_CARD',out.stats.nonCard],
     ['AMBIGUOUS',out.stats.ambiguous],['NO_MATCH',out.stats.noMatch],['v6.69 2차귀속',out.stats.fallback],
     ['2차귀속 MATCHED',out.stats.fallbackMatched],['2차귀속 NON_CARD',out.stats.fallbackNonCard],
     ['2차귀속 AMBIGUOUS',out.stats.fallbackAmbiguous],['canonical 증빙행',out.canonicalRows],
