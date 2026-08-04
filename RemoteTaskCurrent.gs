@@ -1,13 +1,14 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR38 v6.70 production apply retry v1.3.
+ * Current task: PR38 v6.70 production apply retry v1.4.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR38-v1.3-20260804',
+  id: 'PR38-v1.4-20260804',
   title: 'PR38 v6.70 운영 부가세 반영',
   sourceUrls: [
     'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply.gs',
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_1.gs'
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_1.gs',
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_2.gs'
   ],
   startEntry: 'runPr38ProductionApplyStart',
   continueEntry: 'runPr38ProductionApplyContinue',
