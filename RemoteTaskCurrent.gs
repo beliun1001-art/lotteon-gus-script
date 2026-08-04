@@ -1,16 +1,16 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR35 v6.71 safe sheet cleanup non-destructive smoke.
+ * Current task: PR15 VAT future-account diagnostic.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR35-v1.0-20260804',
-  title: 'PR35 v6.71 안전한 시트 정리 비파괴 smoke',
+  id: 'PR15-v1.0-20260804',
+  title: 'PR15 부가세 이상 계정·미래월 원본 진단',
   sourceUrls: [
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-34-safe-sheet-cleanup-menu/Patch_v6_71_safe_sheet_cleanup.gs'
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic.gs'
   ],
-  startEntry: 'runSafeSheetCleanupSmoke_v671',
-  continueEntry: 'runSafeSheetCleanupSmoke_v671',
-  statusSheet: 'PR35_운영스모크상태',
+  startEntry: 'runPr15FutureAccountDiagnostic',
+  continueEntry: 'runPr15FutureAccountDiagnosticContinue',
+  statusSheet: 'PR15_진단상태',
   terminalStatuses: ['PASS', 'ERROR']
 };
 
