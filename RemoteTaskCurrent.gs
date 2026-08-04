@@ -1,11 +1,14 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR38 v6.70 production apply retry v1.2.
+ * Current task: PR38 v6.70 production apply retry v1.3.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR38-v1.2-20260803',
+  id: 'PR38-v1.3-20260804',
   title: 'PR38 v6.70 운영 부가세 반영',
-  sourceUrl: 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply.gs',
+  sourceUrls: [
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply.gs',
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_1.gs'
+  ],
   startEntry: 'runPr38ProductionApplyStart',
   continueEntry: 'runPr38ProductionApplyContinue',
   statusSheet: 'PR38_운영반영상태',
@@ -65,7 +68,10 @@ function lotteonRunRemoteTaskEntry_(entryName) {
   const mainBundle = typeof loadLotteonRemoteBundle_ === 'function'
     ? loadLotteonRemoteBundle_()
     : lotteonFetchMainBundle_();
-  const taskCode = lotteonFetchText_(LOTTEON_REMOTE_TASK.sourceUrl, '원격 작업 코드');
+  const taskUrls = LOTTEON_REMOTE_TASK.sourceUrls || [LOTTEON_REMOTE_TASK.sourceUrl];
+  const taskCode = taskUrls.map(function(url, index) {
+    return lotteonFetchText_(url, '원격 작업 코드 ' + (index + 1));
+  }).join('\n\n;\n\n');
   const combined = mainBundle + '\n\n;\n\n' + taskCode;
 
   return eval(
@@ -221,7 +227,6 @@ function lotteonHandleRemoteWrapperError_(error) {
 
 function lotteonWriteNoticeStatus_(status, error) {
   try {
-    const info = lotteonReadRemoteTaskStatus_();
     const id = PropertiesService.getScriptProperties().getProperty(LOTTEON_REMOTE_SPREADSHEET_KEY);
     if (!id) return;
     const ss = SpreadsheetApp.openById(id);
