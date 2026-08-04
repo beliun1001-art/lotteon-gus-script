@@ -1,16 +1,16 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR15 VAT future-account diagnostic.
+ * Current task: PR15 VAT future-account raw scan diagnostic.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR15-v1.1-20260804',
-  title: 'PR15 부가세 이상 계정·미래월 원본 진단',
+  id: 'PR15-v1.2-20260804',
+  title: 'PR15 부가세 이상 계정·미래월 원본 raw scan 진단',
   sourceUrls: [
     'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic.gs',
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic_Notice_v1_1.gs'
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic_Hotfix_v1_2.gs'
   ],
-  startEntry: 'runPr15FutureAccountDiagnostic',
-  continueEntry: 'runPr15FutureAccountDiagnosticContinue',
+  startEntry: 'runPr15FutureAccountDiagnosticV12',
+  continueEntry: 'runPr15FutureAccountDiagnosticContinueV12',
   statusSheet: 'PR15_진단상태',
   terminalStatuses: ['PASS', 'ERROR']
 };
