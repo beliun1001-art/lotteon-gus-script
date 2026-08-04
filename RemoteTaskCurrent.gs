@@ -1,19 +1,17 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR38 v6.70 production apply retry v1.4.
+ * Current task: PR35 v6.71 safe sheet cleanup non-destructive smoke.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR38-v1.4-20260804',
-  title: 'PR38 v6.70 운영 부가세 반영',
+  id: 'PR35-v1.0-20260804',
+  title: 'PR35 v6.71 안전한 시트 정리 비파괴 smoke',
   sourceUrls: [
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply.gs',
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_1.gs',
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-38-pr33-production-apply/PR38_Remote_Production_Apply_Hotfix_v1_2.gs'
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-34-safe-sheet-cleanup-menu/Patch_v6_71_safe_sheet_cleanup.gs'
   ],
-  startEntry: 'runPr38ProductionApplyStart',
-  continueEntry: 'runPr38ProductionApplyContinue',
-  statusSheet: 'PR38_운영반영상태',
-  terminalStatuses: ['PASS', 'ROLLED_BACK', 'ERROR', 'ROLLBACK_ERROR']
+  startEntry: 'runSafeSheetCleanupSmoke_v671',
+  continueEntry: 'runSafeSheetCleanupSmoke_v671',
+  statusSheet: 'PR35_운영스모크상태',
+  terminalStatuses: ['PASS', 'ERROR']
 };
 
 const LOTTEON_REMOTE_NOTICE_EMAIL = 'beliun1001@gmail.com';
@@ -36,10 +34,10 @@ function runLotteonRemoteTaskStartRemote_() {
 
   if (lastDone === LOTTEON_REMOTE_TASK.id && lotteonIsTerminalStatus_(info.status)) {
     lotteonSendRemoteTaskNotice_(info);
-    return {ok: true, skipped: true, reason: 'ALREADY_COMPLETED', status: info.status};
+    return {ok:true, skipped:true, reason:'ALREADY_COMPLETED', status:info.status};
   }
   if (active === LOTTEON_REMOTE_TASK.id && info.status && !lotteonIsTerminalStatus_(info.status)) {
-    return {ok: true, skipped: true, reason: 'ALREADY_RUNNING', status: info.status};
+    return {ok:true, skipped:true, reason:'ALREADY_RUNNING', status:info.status};
   }
 
   props.setProperty(LOTTEON_REMOTE_ACTIVE_KEY, LOTTEON_REMOTE_TASK.id);
@@ -90,12 +88,12 @@ function lotteonFetchMainBundle_() {
 
 function lotteonFetchText_(url, label) {
   const response = UrlFetchApp.fetch(url + '?ts=' + new Date().getTime(), {
-    method: 'get', muteHttpExceptions: true, followRedirects: true
+    method:'get', muteHttpExceptions:true, followRedirects:true
   });
   const status = response.getResponseCode();
   const text = response.getContentText('UTF-8');
   if (status < 200 || status >= 300) {
-    throw new Error(label + ' 로드 실패 HTTP ' + status + '\n' + url + '\n' + text.slice(0, 500));
+    throw new Error(label + ' 로드 실패 HTTP ' + status + '\n' + url + '\n' + text.slice(0,500));
   }
   return text;
 }
@@ -122,32 +120,24 @@ function lotteonReadRemoteTaskStatus_() {
   const props = PropertiesService.getScriptProperties();
   let ss = null;
   try { ss = SpreadsheetApp.getActive(); } catch (ignore) {}
-
   if (!ss) {
     const id = props.getProperty(LOTTEON_REMOTE_SPREADSHEET_KEY);
     if (id) try { ss = SpreadsheetApp.openById(id); } catch (ignore2) {}
   }
-  if (!ss) {
-    const raw = props.getProperty('PR38_REMOTE_APPLY_STATE');
-    if (raw) try {
-      const state = JSON.parse(raw);
-      if (state && state.spreadsheetId) ss = SpreadsheetApp.openById(state.spreadsheetId);
-    } catch (ignore3) {}
-  }
-  if (!ss) return {status: '', rows: [], map: {}, spreadsheetName: ''};
+  if (!ss) return {status:'', rows:[], map:{}, spreadsheetName:''};
 
   props.setProperty(LOTTEON_REMOTE_SPREADSHEET_KEY, ss.getId());
   const sheet = ss.getSheetByName(LOTTEON_REMOTE_TASK.statusSheet);
   if (!sheet || sheet.getLastRow() < 2) {
-    return {status: '', rows: [], map: {}, spreadsheetName: ss.getName()};
+    return {status:'', rows:[], map:{}, spreadsheetName:ss.getName()};
   }
 
   const values = sheet.getDataRange().getDisplayValues();
   const map = {};
-  for (let r = 1; r < values.length; r++) {
+  for (let r=1; r<values.length; r++) {
     map[String(values[r][0] || '').trim()] = String(values[r][1] || '').trim();
   }
-  return {status: map['상태'] || '', rows: values, map: map, spreadsheetName: ss.getName()};
+  return {status:map['상태'] || '', rows:values, map:map, spreadsheetName:ss.getName()};
 }
 
 function lotteonIsTerminalStatus_(status) {
@@ -170,7 +160,7 @@ function lotteonSendRemoteTaskNotice_(info) {
   if (props.getProperty(LOTTEON_REMOTE_LAST_NOTICE_KEY) === key) return true;
 
   const lines = [];
-  (info.rows || []).forEach(function(row, index) {
+  (info.rows || []).forEach(function(row,index) {
     if (index === 0) return;
     const name = String(row[0] || '').trim();
     const value = String(row[1] || '').trim();
@@ -179,10 +169,10 @@ function lotteonSendRemoteTaskNotice_(info) {
 
   const subject = '[LOTTEON 자동작업 결과][' + info.status + '] ' + LOTTEON_REMOTE_TASK.title;
   const body = [
-    'LOTTEON 원격 자동작업이 종료되었습니다.', '',
+    'LOTTEON 원격 자동작업이 종료되었습니다.','',
     '작업: ' + LOTTEON_REMOTE_TASK.title,
     '작업 ID: ' + LOTTEON_REMOTE_TASK.id,
-    '스프레드시트: ' + (info.spreadsheetName || ''), '',
+    '스프레드시트: ' + (info.spreadsheetName || ''),'',
     lines.join('\n')
   ].join('\n');
 
@@ -190,12 +180,12 @@ function lotteonSendRemoteTaskNotice_(info) {
     MailApp.sendEmail(LOTTEON_REMOTE_NOTICE_EMAIL, subject, body);
     props.setProperty(LOTTEON_REMOTE_LAST_NOTICE_KEY, key);
     props.deleteProperty(LOTTEON_REMOTE_NOTICE_ERROR_KEY);
-    lotteonWriteNoticeStatus_('SENT', '');
+    lotteonWriteNoticeStatus_('SENT','');
     return true;
   } catch (error) {
     const message = String(error && error.message ? error.message : error);
     props.setProperty(LOTTEON_REMOTE_NOTICE_ERROR_KEY, message);
-    lotteonWriteNoticeStatus_('FAILED', message);
+    lotteonWriteNoticeStatus_('FAILED',message);
     return false;
   }
 }
@@ -216,33 +206,33 @@ function lotteonHandleRemoteWrapperError_(error) {
       '작업 ID: ' + LOTTEON_REMOTE_TASK.id + '\n' +
       '오류: ' + message
     );
-    props.setProperty(LOTTEON_REMOTE_LAST_NOTICE_KEY, key);
+    props.setProperty(LOTTEON_REMOTE_LAST_NOTICE_KEY,key);
     props.deleteProperty(LOTTEON_REMOTE_NOTICE_ERROR_KEY);
-    lotteonWriteNoticeStatus_('SENT', '');
+    lotteonWriteNoticeStatus_('SENT','');
   } catch (mailError) {
     const mailMessage = String(mailError && mailError.message ? mailError.message : mailError);
-    props.setProperty(LOTTEON_REMOTE_NOTICE_ERROR_KEY, mailMessage);
-    lotteonWriteNoticeStatus_('FAILED', mailMessage);
+    props.setProperty(LOTTEON_REMOTE_NOTICE_ERROR_KEY,mailMessage);
+    lotteonWriteNoticeStatus_('FAILED',mailMessage);
   }
 }
 
-function lotteonWriteNoticeStatus_(status, error) {
+function lotteonWriteNoticeStatus_(status,error) {
   try {
     const id = PropertiesService.getScriptProperties().getProperty(LOTTEON_REMOTE_SPREADSHEET_KEY);
     if (!id) return;
     const ss = SpreadsheetApp.openById(id);
     const sheet = ss.getSheetByName(LOTTEON_REMOTE_TASK.statusSheet);
     if (!sheet) return;
-    const values = sheet.getRange(1, 1, Math.max(1, sheet.getLastRow()), 2).getDisplayValues();
+    const values = sheet.getRange(1,1,Math.max(1,sheet.getLastRow()),2).getDisplayValues();
     const index = {};
-    for (let r = 0; r < values.length; r++) index[String(values[r][0] || '').trim()] = r + 1;
-    const write = function(name, value) {
-      const row = index[name] || sheet.getLastRow() + 1;
-      sheet.getRange(row, 1, 1, 2).setValues([[name, value]]);
+    for (let r=0; r<values.length; r++) index[String(values[r][0] || '').trim()] = r+1;
+    const write = function(name,value) {
+      const row = index[name] || sheet.getLastRow()+1;
+      sheet.getRange(row,1,1,2).setValues([[name,value]]);
       index[name] = row;
     };
-    write('완료알림', status);
-    write('완료알림오류', error || '');
-    write('완료알림시각', new Date().toISOString());
+    write('완료알림',status);
+    write('완료알림오류',error || '');
+    write('완료알림시각',new Date().toISOString());
   } catch (ignore) {}
 }
