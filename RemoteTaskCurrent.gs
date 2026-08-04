@@ -1,18 +1,15 @@
 /**
  * Permanent remote task slot + unattended autopilot.
- * Current task: PR15 VAT future-account raw scan diagnostic.
+ * Current task: Issue #18 v6.59 brand lifecycle dashboard operating smoke.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR15-v1.2-20260804',
-  title: 'PR15 부가세 이상 계정·미래월 원본 raw scan 진단',
-  sourceUrls: [
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic.gs',
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic_Hotfix_v1_2.gs'
-  ],
-  startEntry: 'runPr15FutureAccountDiagnosticV12',
-  continueEntry: 'runPr15FutureAccountDiagnosticContinueV12',
-  statusSheet: 'PR15_진단상태',
-  terminalStatuses: ['PASS', 'ERROR']
+  id: 'ISSUE18-v1.0-20260804',
+  title: 'Issue18 브랜드운영 대시보드 v6.59 운영 smoke',
+  sourceUrls: [],
+  startEntry: 'refreshDashboardFastOnly',
+  continueEntry: 'continueBrandLifecycleDashboard_v659_',
+  statusSheet: '브랜드운영_자동상태',
+  terminalStatuses: ['done', 'failed']
 };
 
 const LOTTEON_REMOTE_NOTICE_EMAIL = 'beliun1001@gmail.com';
@@ -36,6 +33,12 @@ function runLotteonRemoteTaskStartRemote_() {
   if (lastDone === LOTTEON_REMOTE_TASK.id && lotteonIsTerminalStatus_(info.status)) {
     lotteonSendRemoteTaskNotice_(info);
     return {ok:true, skipped:true, reason:'ALREADY_COMPLETED', status:info.status};
+  }
+  if (active === LOTTEON_REMOTE_TASK.id && lotteonIsTerminalStatus_(info.status)) {
+    props.setProperty(LOTTEON_REMOTE_LAST_DONE_KEY, LOTTEON_REMOTE_TASK.id);
+    props.deleteProperty(LOTTEON_REMOTE_ACTIVE_KEY);
+    lotteonSendRemoteTaskNotice_(info);
+    return {ok:true, skipped:true, reason:'EXTERNAL_CONTINUATION_COMPLETED', status:info.status};
   }
   if (active === LOTTEON_REMOTE_TASK.id && info.status && !lotteonIsTerminalStatus_(info.status)) {
     return {ok:true, skipped:true, reason:'ALREADY_RUNNING', status:info.status};
@@ -138,11 +141,19 @@ function lotteonReadRemoteTaskStatus_() {
   for (let r=1; r<values.length; r++) {
     map[String(values[r][0] || '').trim()] = String(values[r][1] || '').trim();
   }
-  return {status:map['상태'] || '', rows:values, map:map, spreadsheetName:ss.getName()};
+  return {
+    status:map['상태'] || map['status'] || '',
+    rows:values,
+    map:map,
+    spreadsheetName:ss.getName()
+  };
 }
 
 function lotteonIsTerminalStatus_(status) {
-  return LOTTEON_REMOTE_TASK.terminalStatuses.indexOf(String(status || '').trim()) >= 0;
+  const normalized = String(status || '').trim().toLowerCase();
+  return LOTTEON_REMOTE_TASK.terminalStatuses.some(function(item) {
+    return String(item || '').trim().toLowerCase() === normalized;
+  });
 }
 
 function lotteonInstallRemoteAutopilot_() {
