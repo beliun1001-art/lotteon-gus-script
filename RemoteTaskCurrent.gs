@@ -3,10 +3,11 @@
  * Current task: PR15 VAT future-account diagnostic.
  */
 const LOTTEON_REMOTE_TASK = {
-  id: 'PR15-v1.0-20260804',
+  id: 'PR15-v1.1-20260804',
   title: 'PR15 부가세 이상 계정·미래월 원본 진단',
   sourceUrls: [
-    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic.gs'
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic.gs',
+    'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/codex/issue-15-vat-future-account-diagnostic/PR15_Future_Account_Diagnostic_Notice_v1_1.gs'
   ],
   startEntry: 'runPr15FutureAccountDiagnostic',
   continueEntry: 'runPr15FutureAccountDiagnosticContinue',
