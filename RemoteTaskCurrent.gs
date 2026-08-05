@@ -1,188 +1,139 @@
 /**
- * Issue #42 v1.1 standalone operating diagnostic.
- * Reads only production VAT/card evidence sheets and writes only ISSUE42_* sheets.
+ * Issue #43 standalone source-completeness diagnostic.
+ * Reads ISSUE42 output + production VAT/source sheets and writes only ISSUE43_* sheets.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE42-v1.1-20260805',
-  title: '상반기 VAT 잔여 51건 원인 분류 진단',
+  id: 'ISSUE43-v1.0-20260805',
+  title: '상반기 VAT 잔여 51건 원천 완전성 진단',
   enabled: true,
-  statusSheet: 'ISSUE42_진단상태',
-  outputSheet: 'ISSUE42_잔여매칭진단'
+  inputSheet: 'ISSUE42_잔여매칭진단',
+  outputSheet: 'ISSUE43_원천완전성진단',
+  statusSheet: 'ISSUE43_진단상태'
 };
 
 function runLotteonRemoteTaskStartRemote_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
-  var statusSheet = issue42EnsureSheet_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  issue42WriteStatus_(statusSheet, [
+  var stateSheet = issue43EnsureSheet_(ss, LOTTEON_REMOTE_TASK.statusSheet);
+  issue43Write_(stateSheet, [
     ['항목','값'],
-    ['버전','v1.1-ISSUE42-STANDALONE-DIAGNOSTIC'],
+    ['버전','v1.0-ISSUE43-SOURCE-COMPLETENESS-DIAGNOSTIC'],
     ['상태','RUNNING'],
     ['단계','LOAD'],
-    ['메시지','잔여 카드매칭 진단 시작'],
+    ['메시지','원천 완전성 진단 시작'],
     ['운영시트 변경','0'],
     ['갱신시각',new Date().toISOString()]
   ]);
 
   try {
-    var diagSheet = ss.getSheetByName('부가세_카드매칭검증');
-    var historySheet = ss.getSheetByName('카드사용내역_붙여넣기');
-    if (!diagSheet || diagSheet.getLastRow() < 2) throw new Error('부가세_카드매칭검증 시트를 찾지 못했거나 데이터가 없습니다.');
-    if (!historySheet || historySheet.getLastRow() < 2) throw new Error('카드사용내역_붙여넣기 시트를 찾지 못했거나 데이터가 없습니다.');
+    var issue42Sheet = ss.getSheetByName(LOTTEON_REMOTE_TASK.inputSheet);
+    var vatSheet = ss.getSheetByName('부가세_신고자료');
+    var sourceSheet = ss.getSheetByName('매출데이터_붙여넣기');
+    if (!issue42Sheet || issue42Sheet.getLastRow() < 2) throw new Error('ISSUE42_잔여매칭진단 시트를 찾지 못했거나 데이터가 없습니다.');
+    if (!vatSheet || vatSheet.getLastRow() < 2) throw new Error('부가세_신고자료 시트를 찾지 못했거나 데이터가 없습니다.');
+    if (!sourceSheet || sourceSheet.getLastRow() < 2) throw new Error('매출데이터_붙여넣기 시트를 찾지 못했거나 데이터가 없습니다.');
 
-    var diagValues = diagSheet.getDataRange().getValues();
-    var dh = issue42HeaderMap_(diagValues[0]);
-    var required = ['신고연도','반기','주문일','사업자등록번호','쿠팡계정ID','주문번호','롯데결제수단','주문매입금액','카드매칭상태','카드매칭근거'];
-    var missing = required.filter(function(name){ return dh[name] == null; });
-    if (missing.length) throw new Error('부가세_카드매칭검증 필수 헤더 누락: ' + missing.join(', '));
+    var targetValues = issue42Sheet.getDataRange().getValues();
+    var th = issue43HeaderMap_(targetValues[0]);
+    var targetRequired = ['주문번호','주문일','쿠팡계정ID','롯데결제수단','주문매입금액','주원인분류'];
+    var targetMissing = targetRequired.filter(function(name){ return th[name] == null; });
+    if (targetMissing.length) throw new Error('ISSUE42 필수 헤더 누락: ' + targetMissing.join(', '));
 
-    var usedApprovalKeys = {};
-    var unresolved = [];
-    for (var r = 1; r < diagValues.length; r++) {
-      var row = diagValues[r];
-      var status = issue42Text_(row[dh['카드매칭상태']]).toUpperCase();
-      var company = dh['구매카드사'] == null ? '' : issue42Text_(row[dh['구매카드사']]);
-      var approvalNo = dh['승인번호'] == null ? '' : issue42Text_(row[dh['승인번호']]);
-      if ((status === 'MATCHED' || status === 'MASTER_MATCHED' || status === 'NON_CARD') && approvalNo) {
-        usedApprovalKeys[issue42ApprovalKey_(company, approvalNo)] = true;
-      }
-      if (issue42Text_(row[dh['신고연도']]) === '2026' && issue42Text_(row[dh['반기']]) === '상반기' &&
-          (status === 'NO_MATCH' || status === 'AMBIGUOUS')) {
-        unresolved.push({
-          sourceRow:r + 1,
-          orderDate:issue42DateText_(row[dh['주문일']]),
-          business:issue42Text_(row[dh['사업자등록번호']]),
-          account:issue42Text_(row[dh['쿠팡계정ID']]),
-          orderNo:issue42Text_(row[dh['주문번호']]),
-          payment:issue42Text_(row[dh['롯데결제수단']]),
-          purchase:issue42Number_(row[dh['주문매입금액']]),
-          currentStatus:status,
-          currentReason:issue42Text_(row[dh['카드매칭근거']]),
-          currentCandidateCount:dh['후보수'] == null ? 0 : issue42Number_(row[dh['후보수']])
-        });
-      }
-    }
-    if (unresolved.length !== 51) throw new Error('대상 건수 불일치: 기대 51건, 실제 ' + unresolved.length + '건');
+    var vatValues = vatSheet.getDataRange().getValues();
+    var vh = issue43HeaderMap_(vatValues[0]);
+    var vatOrderIndex = issue43FindIndex_(vh, ['주문번호','마켓주문번호','주문ID','주문ID(마켓)']);
+    if (vatOrderIndex < 0) throw new Error('부가세_신고자료 주문번호 헤더를 찾지 못했습니다.');
+    var vatAccountIndex = issue43FindIndex_(vh, ['쿠팡계정ID','마켓아이디','계정ID']);
+    var vatPaymentIndexes = issue43FindAllIndexes_(vatValues[0], ['롯데결제수단','구매결제수단','결제수단','결제정보','결제방법','카드사','결제수단/카드사','결제수단(카드사)']);
+    var vatPurchaseIndexes = issue43FindAllIndexes_(vatValues[0], ['매입금액','구매가격','매입가격','상품매입금액']);
 
-    var historyValues = historySheet.getDataRange().getValues();
-    var hh = issue42HeaderMap_(historyValues[0]);
-    var historyRequired = ['카드사','승인일','승인금액','승인번호'];
-    var missingHistory = historyRequired.filter(function(name){ return hh[name] == null; });
-    if (missingHistory.length) throw new Error('카드사용내역_붙여넣기 필수 헤더 누락: ' + missingHistory.join(', '));
+    var sourceValues = sourceSheet.getDataRange().getValues();
+    var sh = issue43HeaderMap_(sourceValues[0]);
+    var sourceOrderIndex = issue43FindIndex_(sh, ['마켓주문번호','주문번호','주문ID','주문ID(마켓)']);
+    if (sourceOrderIndex < 0) throw new Error('매출데이터_붙여넣기 주문번호 헤더를 찾지 못했습니다.');
+    var sourceAccountIndex = issue43FindIndex_(sh, ['마켓아이디','쿠팡계정ID','계정ID']);
+    var sourcePaymentIndexes = issue43FindAllIndexes_(sourceValues[0], ['롯데결제수단','구매결제수단','결제수단','결제정보','결제방법','카드사','결제수단/카드사','결제수단(카드사)']);
+    var sourcePurchaseIndexes = issue43FindAllIndexes_(sourceValues[0], ['매입금액','구매가격','매입가격','상품매입금액','결제금액(매입)']);
+    if (sourcePurchaseIndexes.indexOf(28) < 0 && sourceValues[0].length > 28) sourcePurchaseIndexes.push(28); // AC source-of-truth
+    var sourceStatusIndexes = issue43FindAllIndexes_(sourceValues[0], ['마켓주문상태','주문상태','상태','클레임상태','처리상태']);
 
-    var evidence = [];
-    for (var i = 1; i < historyValues.length; i++) {
-      var hrow = historyValues[i];
-      var company2 = issue42Text_(hrow[hh['카드사']]);
-      var date = issue42DateText_(hrow[hh['승인일']]);
-      var amount = issue42Number_(hrow[hh['승인금액']]);
-      var approval = issue42Text_(hrow[hh['승인번호']]);
-      var status2 = hh['승인상태'] == null ? '' : issue42Text_(hrow[hh['승인상태']]);
-      var merchant = hh['가맹점명'] == null ? '' : issue42Text_(hrow[hh['가맹점명']]);
-      var lotteFlag = hh['롯데계열여부'] == null ? '' : issue42Text_(hrow[hh['롯데계열여부']]);
-      var cancelAmount = hh['취소금액'] == null ? 0 : Math.abs(issue42Number_(hrow[hh['취소금액']]));
-      var cardName = hh['카드명'] == null ? '' : issue42Text_(hrow[hh['카드명']]);
-      var cardNo = hh['카드번호'] == null ? '' : issue42Text_(hrow[hh['카드번호']]);
-      var end4 = hh['카드번호끝4'] == null ? '' : issue42PadEnd4_(hrow[hh['카드번호끝4']]);
-      var merchantOrderNo = hh['가맹점주문번호'] == null ? '' : issue42Text_(hrow[hh['가맹점주문번호']]);
-      var sourceFile = hh['원본파일'] == null ? '' : issue42Text_(hrow[hh['원본파일']]);
-      var evidenceType = hh['증빙유형'] == null ? '' : issue42Text_(hrow[hh['증빙유형']]);
-      var isCancel = /취소|환불|반품/.test(status2) || amount < 0;
-      var effective = Math.max(Math.abs(amount) - cancelAmount, 0);
-      var lotte = /^(y|yes|true|1|롯데)$/i.test(lotteFlag) || /롯데|lotte/i.test(merchant);
-      if (!date || !effective || isCancel || !lotte) continue;
-      evidence.push({
-        rowNo:i + 1,
-        company:company2,
-        cardName:cardName,
-        cardNumber:cardNo,
-        cardEnd4:end4,
-        date:date,
-        amount:effective,
-        approvalNo:approval,
-        merchant:merchant,
-        merchantOrderNo:merchantOrderNo,
-        sourceFile:sourceFile,
-        evidenceType:evidenceType,
-        used:approval ? !!usedApprovalKeys[issue42ApprovalKey_(company2, approval)] : false
-      });
-    }
+    var vatMap = issue43BuildOrderMap_(vatValues, vatOrderIndex, vatAccountIndex);
+    var sourceMap = issue43BuildOrderMap_(sourceValues, sourceOrderIndex, sourceAccountIndex);
 
-    var outHeaders = [
-      '원본행','주문일','사업자등록번호','쿠팡계정ID','주문번호','롯데결제수단','주문매입금액',
-      '현재상태','현재근거','현재후보수','주원인분류','추가검토가능','0~+7일후보','+8~+14일후보',
-      '이전1~7일후보','기타±30일후보','미사용후보','사용된후보','후보카드수','후보카드요약','후보증빙요약'
+    var outputHeaders = [
+      '주문일','쿠팡계정ID','주문번호','ISSUE42분류','현재롯데결제수단','현재주문매입금액',
+      '부가세상세행수','원천행수','부가세결제수단','원천결제수단','부가세매입금액합계','원천AC매입금액합계',
+      '원천매입금액값','원천주문상태','부가세원본행','매출원본행','원천완전성분류','진단메모'
     ];
-    var outRows = [];
+    var outputRows = [];
     var counts = {};
-    unresolved.forEach(function(order) {
-      var exact = evidence.filter(function(ev){ return ev.amount === order.purchase; });
-      var w0 = [], w8 = [], prev = [], other = [];
-      exact.forEach(function(ev) {
-        var d = issue42DaysBetween_(order.orderDate, ev.date);
-        if (d >= 0 && d <= 7) w0.push(ev);
-        else if (d >= 8 && d <= 14) w8.push(ev);
-        else if (d >= -7 && d <= -1) prev.push(ev);
-        else if (Math.abs(d) <= 30) other.push(ev);
-      });
-      var allWindow = w0.concat(w8, prev, other);
-      var unused = allWindow.filter(function(ev){ return !ev.used; });
-      var used = allWindow.filter(function(ev){ return ev.used; });
-      var identities = {};
-      unused.forEach(function(ev){ identities[issue42IdentityKey_(ev)] = true; });
-      var identityCount = Object.keys(identities).length;
-      var classification = issue42Classify_(order, w0, w8, prev, other, unused, used);
-      counts[classification] = (counts[classification] || 0) + 1;
-      var reviewable = /단일후보|동일카드 다중건/.test(classification) ? 'Y' : 'N';
-      outRows.push([
-        order.sourceRow,order.orderDate,order.business,order.account,order.orderNo,order.payment,order.purchase,
-        order.currentStatus,order.currentReason,order.currentCandidateCount,classification,reviewable,
-        w0.length,w8.length,prev.length,other.length,unused.length,used.length,identityCount,
-        issue42CandidateCardSummary_(unused),issue42EvidenceSummary_(allWindow)
-      ]);
-    });
 
-    if (outRows.length !== 51) throw new Error('출력 건수 불일치: ' + outRows.length);
-    var outputSheet = issue42EnsureSheet_(ss, LOTTEON_REMOTE_TASK.outputSheet);
+    for (var r = 1; r < targetValues.length; r++) {
+      var target = targetValues[r];
+      var orderNo = issue43Text_(target[th['주문번호']]);
+      if (!orderNo) continue;
+      var account = issue43Text_(target[th['쿠팡계정ID']]);
+      var issue42Class = issue43Text_(target[th['주원인분류']]);
+      var currentPayment = issue43Text_(target[th['롯데결제수단']]);
+      var currentPurchase = issue43Number_(target[th['주문매입금액']]);
+      var key = issue43OrderKey_(orderNo, account);
+      var vatEntries = vatMap[key] || vatMap[issue43OrderKey_(orderNo, '')] || [];
+      var sourceEntries = sourceMap[key] || sourceMap[issue43OrderKey_(orderNo, '')] || [];
+
+      var vatPayments = issue43CollectTexts_(vatEntries, vatPaymentIndexes);
+      var sourcePayments = issue43CollectTexts_(sourceEntries, sourcePaymentIndexes);
+      var vatPurchase = issue43SumIndexes_(vatEntries, vatPurchaseIndexes);
+      var sourcePurchase = issue43SumIndexes_(sourceEntries, sourcePurchaseIndexes);
+      var sourcePurchaseValues = issue43CollectNumbers_(sourceEntries, sourcePurchaseIndexes);
+      var statuses = issue43CollectTexts_(sourceEntries, sourceStatusIndexes);
+      var result = issue43Classify_(issue42Class, sourceEntries.length, sourcePayments, sourcePurchase, statuses);
+      counts[result.classification] = (counts[result.classification] || 0) + 1;
+
+      outputRows.push([
+        issue43DateText_(target[th['주문일']]),account,orderNo,issue42Class,currentPayment,currentPurchase,
+        vatEntries.length,sourceEntries.length,vatPayments.join(' | '),sourcePayments.join(' | '),vatPurchase,sourcePurchase,
+        sourcePurchaseValues.join(' | '),statuses.join(' | '),issue43RowNos_(vatEntries),issue43RowNos_(sourceEntries),
+        result.classification,result.memo
+      ]);
+    }
+
+    if (outputRows.length !== 51) throw new Error('대상 건수 불일치: 기대 51건, 실제 ' + outputRows.length + '건');
+    var outputSheet = issue43EnsureSheet_(ss, LOTTEON_REMOTE_TASK.outputSheet);
     outputSheet.clearContents();
-    outputSheet.getRange(1,1,1,outHeaders.length).setValues([outHeaders]);
-    outputSheet.getRange(2,1,outRows.length,outHeaders.length).setValues(outRows);
+    outputSheet.getRange(1,1,1,outputHeaders.length).setValues([outputHeaders]);
+    outputSheet.getRange(2,1,outputRows.length,outputHeaders.length).setValues(outputRows);
     outputSheet.setFrozenRows(1);
-    outputSheet.getRange(1,1,1,outHeaders.length).setBackground('#d9eaf7').setFontWeight('bold');
-    outputSheet.getRange(2,7,outRows.length,1).setNumberFormat('#,##0');
+    outputSheet.getRange(1,1,1,outputHeaders.length).setBackground('#d9eaf7').setFontWeight('bold');
+    outputSheet.getRange(2,6,outputRows.length,1).setNumberFormat('#,##0');
+    outputSheet.getRange(2,11,outputRows.length,2).setNumberFormat('#,##0');
 
     var statusRows = [
       ['항목','값'],
-      ['버전','v1.1-ISSUE42-STANDALONE-DIAGNOSTIC'],
+      ['버전','v1.0-ISSUE43-SOURCE-COMPLETENESS-DIAGNOSTIC'],
       ['상태','PASS'],
       ['단계','DONE'],
-      ['메시지','잔여 카드매칭 원인 분류 완료'],
-      ['대상건수',unresolved.length],
-      ['출력건수',outRows.length],
-      ['NO_MATCH',unresolved.filter(function(x){ return x.currentStatus === 'NO_MATCH'; }).length],
-      ['AMBIGUOUS',unresolved.filter(function(x){ return x.currentStatus === 'AMBIGUOUS'; }).length],
-      ['추가검토가능',outRows.filter(function(x){ return x[11] === 'Y'; }).length],
+      ['메시지','원천 결제수단·매입금액 완전성 진단 완료'],
+      ['대상건수',outputRows.length],
       ['운영시트 변경','0']
     ];
-    Object.keys(counts).sort().forEach(function(key){ statusRows.push(['분류_' + key, counts[key]]); });
+    Object.keys(counts).sort().forEach(function(name){ statusRows.push(['분류_' + name, counts[name]]); });
     statusRows.push(['완료시각',new Date().toISOString()]);
-    issue42WriteStatus_(statusSheet,statusRows);
-
+    issue43Write_(stateSheet,statusRows);
     try {
-      MailApp.sendEmail('beliun1001@gmail.com','[LOTTEON 자동작업 결과][PASS] ISSUE42-v1.1',
-        statusRows.map(function(x){ return x[0] + ': ' + x[1]; }).join('\n'));
+      MailApp.sendEmail('beliun1001@gmail.com','[LOTTEON 자동작업 결과][PASS] ISSUE43-v1.0',
+        statusRows.map(function(row){ return row[0] + ': ' + row[1]; }).join('\n'));
     } catch (mailError) {
       statusRows.push(['완료알림오류',String(mailError && mailError.message ? mailError.message : mailError)]);
-      issue42WriteStatus_(statusSheet,statusRows);
+      issue43Write_(stateSheet,statusRows);
     }
-    return {ok:true,target:unresolved.length,output:outRows.length,counts:counts};
+    return {ok:true,target:outputRows.length,counts:counts};
   } catch (e) {
-    issue42WriteStatus_(statusSheet,[
+    issue43Write_(stateSheet,[
       ['항목','값'],
-      ['버전','v1.1-ISSUE42-STANDALONE-DIAGNOSTIC'],
+      ['버전','v1.0-ISSUE43-SOURCE-COMPLETENESS-DIAGNOSTIC'],
       ['상태','ERROR'],
       ['단계','FAILED'],
-      ['메시지','잔여 카드매칭 진단 실패'],
+      ['메시지','원천 완전성 진단 실패'],
       ['오류',String(e && e.message ? e.message : e)],
       ['운영시트 변경','0'],
       ['갱신시각',new Date().toISOString()]
@@ -191,39 +142,73 @@ function runLotteonRemoteTaskStartRemote_() {
   }
 }
 
-function issue42Classify_(order,w0,w8,prev,other,unused,used) {
-  if (!order.purchase) return '금액 0원';
-  if (!order.payment) return '결제수단 공란';
-  var w0u = w0.filter(function(x){return !x.used;});
-  var w8u = w8.filter(function(x){return !x.used;});
-  var prevu = prev.filter(function(x){return !x.used;});
-  if (w0u.length) {
-    var n0 = issue42IdentityCount_(w0u);
-    return n0 > 1 ? 'exact 후보 다중카드' : (w0u.length > 1 ? 'exact 후보 동일카드 다중건' : '0~+7일 미사용 단일후보');
+function issue43Classify_(issue42Class, sourceCount, sourcePayments, sourcePurchase, statuses) {
+  if (!sourceCount) return {classification:'원천 주문행 없음',memo:'매출데이터_붙여넣기에서 동일 주문번호를 찾지 못함'};
+  var statusText = statuses.join(' | ');
+  if (issue42Class === '결제수단 공란') {
+    if (sourcePayments.length) return {classification:'원천에는 결제수단 있으나 부가세 시트 누락',memo:'원천 결제수단=' + sourcePayments.join(' | ')};
+    return {classification:'원천에도 결제수단 공란',memo:'확인한 결제수단 관련 컬럼이 모두 공란'};
   }
-  if (w8u.length && issue42IdentityCount_(w8u) === 1) return w8u.length === 1 ? '+8~+14일 단일후보' : '+8~+14일 동일카드 다중건';
-  if (prevu.length && issue42IdentityCount_(prevu) === 1) return prevu.length === 1 ? '주문일 이전 단일후보' : '주문일 이전 동일카드 다중건';
-  if (unused.length && issue42IdentityCount_(unused) > 1) return '±30일 exact 후보 다중카드';
-  if (unused.length) return '±30일 기타 단일카드 후보';
-  if (used.length) return '증빙은 있으나 이미 다른 주문에 사용됨';
-  if (order.currentStatus === 'AMBIGUOUS') return '현재 AMBIGUOUS 유지 필요';
-  return 'exact 후보 없음';
+  if (issue42Class === '금액 0원') {
+    if (/취소|반품|환불|교환/.test(statusText)) return {classification:'취소/반품/환불 관련 0원',memo:'원천상태=' + statusText};
+    if (sourcePurchase > 0) return {classification:'원천에는 매입금액 있으나 부가세 시트 0원',memo:'원천 매입금액 합계=' + sourcePurchase};
+    return {classification:'AC 매입금액 실제 0원',memo:'원천 AC/매입금액 관련 값 합계가 0'};
+  }
+  if (issue42Class === 'exact 후보 없음') {
+    return {classification:'카드 원본 증빙 자체 없음',memo:'Issue42 ±30일 exact amount 후보 0건'};
+  }
+  return {classification:'기타 원천 확인 필요',memo:'Issue42 분류=' + issue42Class};
 }
-function issue42IdentityCount_(rows){var m={};rows.forEach(function(x){m[issue42IdentityKey_(x)]=true;});return Object.keys(m).length;}
-function issue42IdentityKey_(ev){return [issue42NormCompany_(ev.company),ev.cardEnd4||'',ev.cardNumber||'',ev.cardName||''].join('|');}
-function issue42NormCompany_(v){return issue42Text_(v).toLowerCase().replace(/\s|카드/g,'');}
-function issue42ApprovalKey_(company,no){return issue42NormCompany_(company)+'|'+issue42Text_(no);}
-function issue42CandidateCardSummary_(rows){var m={};rows.forEach(function(x){var label=[x.company,x.cardName,x.cardEnd4].filter(Boolean).join('/');m[label||'식별불가']=true;});return Object.keys(m).sort().join(' ; ');}
-function issue42EvidenceSummary_(rows){return rows.slice(0,8).map(function(x){return [x.date,x.company,x.cardEnd4,x.approvalNo,x.used?'USED':'UNUSED'].filter(Boolean).join('/')}).join(' ; ');}
-function issue42PadEnd4_(v){var s=issue42Text_(v).replace(/\D/g,'');return s?s.slice(-4).padStart(4,'0'):'';}
-function issue42HeaderMap_(row){var m={};(row||[]).forEach(function(v,i){m[issue42Text_(v)]=i;});return m;}
-function issue42Text_(v){return v == null ? '' : String(v).trim();}
-function issue42Number_(v){if(typeof v==='number')return isFinite(v)?v:0;var n=Number(String(v==null?'':v).replace(/,/g,'').trim());return isFinite(n)?n:0;}
-function issue42DateText_(v){
-  if (Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime())) return Utilities.formatDate(v,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd');
-  var s=issue42Text_(v);var m=s.match(/(20\d{2})[-\/.년\s]*(\d{1,2})[-\/.월\s]*(\d{1,2})/);if(!m)return s;return m[1]+'-'+String(Number(m[2])).padStart(2,'0')+'-'+String(Number(m[3])).padStart(2,'0');
+
+function issue43BuildOrderMap_(values, orderIndex, accountIndex) {
+  var map = {};
+  for (var r = 1; r < values.length; r++) {
+    var orderNo = issue43Text_(values[r][orderIndex]);
+    if (!orderNo) continue;
+    var account = accountIndex >= 0 ? issue43Text_(values[r][accountIndex]) : '';
+    var entry = {rowNo:r + 1,row:values[r]};
+    var exactKey = issue43OrderKey_(orderNo,account);
+    var blankKey = issue43OrderKey_(orderNo,'');
+    if (!map[exactKey]) map[exactKey] = [];
+    map[exactKey].push(entry);
+    if (exactKey !== blankKey) {
+      if (!map[blankKey]) map[blankKey] = [];
+      map[blankKey].push(entry);
+    }
+  }
+  return map;
 }
-function issue42DaysBetween_(a,b){var x=issue42DateText_(a).match(/^(\d{4})-(\d{2})-(\d{2})$/),y=issue42DateText_(b).match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!x||!y)return 99999;return Math.round((Date.UTC(+y[1],+y[2]-1,+y[3])-Date.UTC(+x[1],+x[2]-1,+x[3]))/86400000);}
-function issue42EnsureSheet_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
-function issue42WriteStatus_(sheet,rows){sheet.clearContents();sheet.getRange(1,1,rows.length,2).setValues(rows);sheet.setFrozenRows(1);sheet.getRange(1,1,1,2).setBackground('#d9eaf7').setFontWeight('bold');}
+function issue43OrderKey_(orderNo,account){return issue43Text_(orderNo) + '|' + issue43Text_(account).toLowerCase();}
+function issue43RowNos_(entries){return entries.map(function(x){return x.rowNo;}).join(',');}
+function issue43CollectTexts_(entries,indexes){
+  var out = {}, list = [];
+  entries.forEach(function(entry){indexes.forEach(function(index){var value=issue43Text_(entry.row[index]);if(value&&!out[value]){out[value]=true;list.push(value);}});});
+  return list;
+}
+function issue43CollectNumbers_(entries,indexes){
+  var list=[];
+  entries.forEach(function(entry){indexes.forEach(function(index){var n=issue43Number_(entry.row[index]);if(n||String(entry.row[index]||'').trim()==='0')list.push(n);});});
+  return list;
+}
+function issue43SumIndexes_(entries,indexes){
+  var sum=0;
+  entries.forEach(function(entry){indexes.forEach(function(index){sum+=issue43Number_(entry.row[index]);});});
+  return sum;
+}
+function issue43FindAllIndexes_(headers,aliases){
+  var normalizedAliases={};aliases.forEach(function(x){normalizedAliases[issue43Norm_(x)]=true;});
+  var out=[];(headers||[]).forEach(function(header,index){if(normalizedAliases[issue43Norm_(header)])out.push(index);});
+  return out;
+}
+function issue43FindIndex_(map,aliases){for(var i=0;i<aliases.length;i++){var key=issue43Norm_(aliases[i]);if(map[key]!=null)return map[key];}return -1;}
+function issue43HeaderMap_(headers){var map={};(headers||[]).forEach(function(x,i){map[issue43Norm_(x)]=i;map[issue43Text_(x)]=i;});return map;}
+function issue43Norm_(value){return issue43Text_(value).toLowerCase().replace(/[\s._()\[\]{}\-\/]/g,'');}
+function issue43Text_(value){return value==null?'':String(value).trim();}
+function issue43Number_(value){if(typeof value==='number'&&isFinite(value))return value;var n=Number(String(value==null?'':value).replace(/,/g,'').replace(/[^0-9.\-]/g,''));return isFinite(n)?n:0;}
+function issue43DateText_(value){
+  if(Object.prototype.toString.call(value)==='[object Date]'&&!isNaN(value.getTime()))return Utilities.formatDate(value,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd');
+  var text=issue43Text_(value);var m=text.match(/(20\d{2})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);return m?m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2):text;
+}
+function issue43EnsureSheet_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
+function issue43Write_(sheet,rows){sheet.clearContents();sheet.getRange(1,1,rows.length,2).setValues(rows);sheet.setFrozenRows(1);sheet.getRange(1,1,1,2).setBackground('#d9eaf7').setFontWeight('bold');SpreadsheetApp.flush();}
 function runLotteonRemoteTaskContinueRemote_(){return runLotteonRemoteTaskStartRemote_();}
