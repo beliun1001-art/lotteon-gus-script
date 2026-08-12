@@ -1,224 +1,262 @@
 /**
- * Issue #48 v1.3 read-only diagnostic.
- * Finds the current purchase-amount column in 매출데이터_붙여넣기 and compares
- * it with the historical hard-coded AC source-of-truth assumption.
- * Writes only ISSUE48_* diagnostic sheets.
+ * Issue #49 standalone read-only preview.
+ * Rebuilds 2026-04-01 ~ 2026-06-30 VAT detail from the latest source using
+ * production v6.48 semantics, but writes only ISSUE49_* preview/status sheets.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE48-v1.3-20260812',
-  title: '상반기 VAT 원천 매입금액 열 위치 진단',
+  id: 'ISSUE49-v1.0-20260812',
+  title: '2026년 4~6월 VAT 신고자료 최신 원천 미리보기',
   enabled: true,
-  outputSheet: 'ISSUE48_원천매입열진단',
-  statusSheet: 'ISSUE48_진단상태'
+  outputSheet: 'ISSUE49_4_6월_VAT미리보기',
+  statusSheet: 'ISSUE49_진단상태'
 };
 
 function runLotteonRemoteTaskStartRemote_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
-  var state = issue48v13Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  issue48v13Write_(state,[
+  var state = issue49Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
+  issue49WriteStatus_(state,[
     ['항목','값'],
-    ['버전','v1.3-ISSUE48-SOURCE-PURCHASE-COLUMN-DIAGNOSTIC'],
+    ['버전','v1.0-ISSUE49-APR-JUN-VAT-PREVIEW'],
     ['상태','RUNNING'],['단계','LOAD'],
-    ['메시지','원천 매입금액 열 위치 진단 시작'],
+    ['메시지','2026년 4~6월 VAT 미리보기 시작'],
     ['운영시트 변경','0'],['갱신시각',new Date().toISOString()]
   ]);
 
   try {
     var source = ss.getSheetByName('매출데이터_붙여넣기');
-    var vat = ss.getSheetByName('부가세_신고자료');
-    var verify = ss.getSheetByName('부가세_카드매칭검증');
     if (!source || source.getLastRow() < 2) throw new Error('매출데이터_붙여넣기 시트가 없습니다.');
-    if (!vat || vat.getLastRow() < 2) throw new Error('부가세_신고자료 시트가 없습니다.');
-    if (!verify || verify.getLastRow() < 2) throw new Error('부가세_카드매칭검증 시트가 없습니다.');
 
-    var sourceLastRow = source.getLastRow(), sourceLastCol = source.getLastColumn();
-    var sh = source.getRange(1,1,1,sourceLastCol).getValues()[0] || [];
-    var sv = source.getRange(2,1,sourceLastRow-1,sourceLastCol).getValues();
+    var lastRow = source.getLastRow();
+    var lastCol = source.getLastColumn();
+    var values = source.getRange(1,1,lastRow,lastCol).getValues();
+    var headers = values[0] || [];
+    if (headers.length < 29) throw new Error('원천 시트가 AC열까지 존재하지 않습니다.');
 
-    var dateIx = issue48v13FindFirst_(sh,['마켓주문일자','주문일자','결제일자','주문일시'],0);
-    var orderIx = issue48v13FindFirst_(sh,['마켓주문번호','주문번호','주문ID','주문ID(마켓)'],2);
-    var salesIx = issue48v13FindFirst_(sh,['결제금액합계(원)','결제금액합계','결제금액','순수매출액','판매금액'],6);
-    var statusIx = issue48v13FindFirst_(sh,['주문상태','상태','클레임상태','처리상태'],-1);
-    var accountIx = 3; // production v6.48 fixed D-column account source
-    var acIx = 28;
-    if (sourceLastCol <= acIx) throw new Error('원천 시트에 AC열이 없습니다.');
-
-    // Build current 2026 H1 order/account target set from VAT detail.
-    var vv = vat.getDataRange().getValues(), vh = vv[0] || [];
-    var vy = issue48v13FindFirst_(vh,['신고연도'],-1);
-    var vhf = issue48v13FindFirst_(vh,['반기'],-1);
-    var va = issue48v13FindFirst_(vh,['쿠팡계정ID','마켓아이디','계정ID'],-1);
-    var vo = issue48v13FindFirst_(vh,['주문번호','마켓주문번호','주문ID','주문ID(마켓)'],-1);
-    if (vy<0 || vhf<0 || va<0 || vo<0) throw new Error('VAT H1 target 헤더 누락');
-    var h1Targets = {}, vatH1Rows = 0;
-    for (var vr=1;vr<vv.length;vr++) {
-      if (issue48v13Text_(vv[vr][vy]) !== '2026' || issue48v13Text_(vv[vr][vhf]) !== '상반기') continue;
-      vatH1Rows++;
-      var vk = issue48v13TargetKey_(vv[vr][va], vv[vr][vo]);
-      if (vk) h1Targets[vk] = true;
+    var ix = issue49Indexes_(headers);
+    var dHeader = issue49Text_(headers[3]);
+    var acHeader = issue49Text_(headers[28]);
+    if (issue49Compact_(acHeader) !== issue49Compact_('구매가격')) {
+      throw new Error('AC열 헤더가 구매가격이 아닙니다: AC=' + acHeader);
     }
 
-    // Current card-verification total is kept only as a comparison reference.
-    var cv = verify.getDataRange().getValues(), ch = cv[0] || [];
-    var cy = issue48v13FindFirst_(ch,['신고연도'],-1);
-    var chf = issue48v13FindFirst_(ch,['반기'],-1);
-    var cp = issue48v13FindFirst_(ch,['주문매입금액','매입금액'],-1);
-    if (cy<0 || chf<0 || cp<0) throw new Error('카드검증 기준 헤더 누락');
-    var verifyPurchase = 0, verifyOrders = 0;
-    for (var cr=1;cr<cv.length;cr++) {
-      if (issue48v13Text_(cv[cr][cy]) !== '2026' || issue48v13Text_(cv[cr][chf]) !== '상반기') continue;
-      verifyOrders++;
-      verifyPurchase += issue48v13Number_(cv[cr][cp]);
-    }
+    var previewHeaders = [
+      '원천행','날짜','신고연도','반기','신고월','쿠팡계정ID','사업자등록번호','주문번호','주문번호정규화',
+      '고객명','브랜드명','상품번호','상품명','판매수량','순수매출액','매출공급가액','매출부가세',
+      '정산기준금액','정산방식','마켓수수료/비용','매입금액','매입공급가액','매입부가세',
+      '납부예상부가세','예상이익','부가세반영예상이익','롯데결제수단','원천주문상태'
+    ];
 
-    // Find exact purchase aliases and broader purchase/cost-looking headers.
-    var exactAliases = ['매입금액','구매가격','매입가격','상품매입금액','결제금액(매입)','구매금액','매입가','원가'];
-    var candidateMap = {};
-    for (var c=0;c<sh.length;c++) {
-      var h = issue48v13Text_(sh[c]);
-      var compact = issue48v13Compact_(h);
-      var exact = exactAliases.some(function(a){return compact === issue48v13Compact_(a);});
-      var broad = /매입|구매.*가격|원가|purchase|cost/i.test(h);
-      if (exact || broad) candidateMap[c] = true;
-    }
-    candidateMap[acIx] = true;
-    var candidateIxs = Object.keys(candidateMap).map(Number).sort(function(a,b){return a-b;});
-
-    var stats = {};
-    candidateIxs.forEach(function(ix){
-      stats[ix] = {
-        ix:ix, col:issue48v13Col_(ix+1), header:issue48v13Text_(sh[ix]),
-        allNonblank:0, allSum:0, allMax:0, allGt1e9:0,
-        h1Nonblank:0, h1Sum:0, h1Max:0, h1Gt1e9:0, h1Reasonable:0, h1Zero:0,
-        h1Number:0, h1String:0
-      };
-    });
-
-    var h1SourceRows = 0, h1OrderTargetRows = 0, samples = [];
-    for (var r=0;r<sv.length;r++) {
-      var row = sv[r];
-      var key = issue48v13TargetKey_(row[accountIx], row[orderIx]);
-      var inTarget = !!(key && h1Targets[key]);
-      if (inTarget) h1OrderTargetRows++;
-      var status = statusIx>=0 ? issue48v13Text_(row[statusIx]) : '';
-      var sales = issue48v13Number_(row[salesIx]);
-      var productionEligible = inTarget && !/취소|반품|환불/.test(status) && !!sales;
-      if (productionEligible) h1SourceRows++;
-
-      candidateIxs.forEach(function(ix){
-        var s = stats[ix], raw = row[ix], text = issue48v13Text_(raw), n = issue48v13Number_(raw), abs = Math.abs(n);
-        if (text !== '') s.allNonblank++;
-        s.allSum += n;
-        if (abs > s.allMax) s.allMax = abs;
-        if (abs > 1e9) s.allGt1e9++;
-        if (!productionEligible) return;
-        if (text !== '') s.h1Nonblank++;
-        s.h1Sum += n;
-        if (abs > s.h1Max) s.h1Max = abs;
-        if (abs > 1e9) s.h1Gt1e9++;
-        if (n > 0 && n <= 10000000) s.h1Reasonable++;
-        if (n === 0) s.h1Zero++;
-        if (typeof raw === 'number' && isFinite(raw)) s.h1Number++;
-        else if (typeof raw === 'string') s.h1String++;
-      });
-
-      if (productionEligible && samples.length < 30) {
-        var sample = [r+2,issue48v13Date_(row[dateIx]),issue48v13Text_(row[accountIx]),issue48v13Text_(row[orderIx]),status,sales];
-        candidateIxs.forEach(function(ix){sample.push(row[ix]);});
-        samples.push(sample);
+    var out = [];
+    var uniqueOrders = {};
+    var stats = {
+      totalRows: values.length - 1,
+      dateParsed: 0,
+      rangeRows: 0,
+      cancelExcluded: 0,
+      salesZeroExcluded: 0,
+      finalRows: 0,
+      accountMissing: 0,
+      businessMissing: 0,
+      settlementFallback: 0,
+      purchaseZero: 0,
+      paymentBlank: 0,
+      sales: 0,
+      settlement: 0,
+      purchase: 0,
+      salesVat: 0,
+      purchaseVat: 0,
+      payableVat: 0,
+      months: {
+        '2026-04': {rows:0,orders:{},sales:0,purchase:0,paymentBlank:0},
+        '2026-05': {rows:0,orders:{},sales:0,purchase:0,paymentBlank:0},
+        '2026-06': {rows:0,orders:{},sales:0,purchase:0,paymentBlank:0}
       }
+    };
+
+    for (var r=1; r<values.length; r++) {
+      var row = values[r];
+      var iso = issue49DateIso_(issue49At_(row, ix.date));
+      if (iso) stats.dateParsed++;
+      if (!iso || iso < '2026-04-01' || iso > '2026-06-30') continue;
+      stats.rangeRows++;
+
+      var status = issue49Text_(issue49At_(row, ix.status));
+      if (/취소|반품|환불/.test(status)) {
+        stats.cancelExcluded++;
+        continue;
+      }
+
+      var sales = issue49Number_(issue49At_(row, ix.sales));
+      if (!sales) {
+        stats.salesZeroExcluded++;
+        continue;
+      }
+
+      // Production v6.48 semantics: D is account source, AC is purchase source-of-truth.
+      var account = issue49Text_(row[3]);
+      var business = issue49BusinessNo_(account);
+      var orderNo = issue49Text_(issue49At_(row, ix.orderNo));
+      var orderNorm = issue49OrderNorm_(orderNo);
+      var settlementActual = issue49Number_(issue49At_(row, ix.settlement));
+      var settlement = settlementActual || Math.round(sales * 0.901);
+      var settlementMethod = settlementActual ? '원천정산금액' : '매출*0.901 fallback';
+      var purchase = issue49Number_(row[28]);
+      var salesSplit = issue49SplitVat_(sales);
+      var purchaseSplit = issue49SplitVat_(purchase);
+      var fee = sales - settlement;
+      var profit = settlement - purchase;
+      var payable = salesSplit.vat - purchaseSplit.vat;
+      var payment = issue49Text_(issue49At_(row, ix.payment));
+      var qty = issue49Number_(issue49At_(row, ix.quantity)) || 1;
+      var month = iso.slice(0,7);
+
+      stats.finalRows++;
+      if (!account) stats.accountMissing++;
+      if (!business) stats.businessMissing++;
+      if (!settlementActual) stats.settlementFallback++;
+      if (!purchase) stats.purchaseZero++;
+      if (!payment) stats.paymentBlank++;
+      stats.sales += sales;
+      stats.settlement += settlement;
+      stats.purchase += purchase;
+      stats.salesVat += salesSplit.vat;
+      stats.purchaseVat += purchaseSplit.vat;
+      stats.payableVat += payable;
+
+      var orderKey = [business, account.toLowerCase(), orderNorm || ('BLANK@'+(r+1))].join('|');
+      uniqueOrders[orderKey] = true;
+      if (stats.months[month]) {
+        var ms = stats.months[month];
+        ms.rows++;
+        ms.orders[orderKey] = true;
+        ms.sales += sales;
+        ms.purchase += purchase;
+        if (!payment) ms.paymentBlank++;
+      }
+
+      out.push([
+        r+1,iso,'2026','상반기',month,account,business,orderNo,orderNorm,
+        issue49Text_(issue49At_(row,ix.customer)),issue49Text_(issue49At_(row,ix.brand)),
+        issue49Text_(issue49At_(row,ix.productNo)),issue49Text_(issue49At_(row,ix.productName)),qty,
+        sales,salesSplit.supply,salesSplit.vat,settlement,settlementMethod,fee,purchase,purchaseSplit.supply,purchaseSplit.vat,
+        payable,profit,profit-payable,payment,status
+      ]);
     }
 
-    var candidates = candidateIxs.map(function(ix){
-      var s = stats[ix];
-      s.diffVerify = Math.round(s.h1Sum - verifyPurchase);
-      s.plausible = s.h1Sum > 0 && s.h1Gt1e9 === 0 && s.h1Max <= 10000000;
-      return s;
-    });
-    var plausible = candidates.filter(function(s){return s.plausible;}).sort(function(a,b){return Math.abs(a.diffVerify)-Math.abs(b.diffVerify);});
-    var best = plausible.length ? plausible[0] : null;
+    if (!stats.finalRows) throw new Error('2026년 4~6월 최종 생성 대상 행이 0건입니다. 날짜/헤더를 확인하세요.');
 
-    var outputHeaders = ['원천행','주문일','D열계정','주문번호','상태','순수매출액'];
-    candidateIxs.forEach(function(ix){outputHeaders.push(issue48v13Col_(ix+1)+' / '+issue48v13Text_(sh[ix]));});
-    var output = issue48v13Ensure_(ss,LOTTEON_REMOTE_TASK.outputSheet);
+    var output = issue49Ensure_(ss, LOTTEON_REMOTE_TASK.outputSheet);
     output.clearContents();
-    output.getRange(1,1,1,outputHeaders.length).setValues([outputHeaders]);
-    if (samples.length) output.getRange(2,1,samples.length,outputHeaders.length).setValues(samples);
+    output.getRange(1,1,1,previewHeaders.length).setValues([previewHeaders]);
+    output.getRange(2,1,out.length,previewHeaders.length).setValues(out);
     output.setFrozenRows(1);
-    output.getRange(1,1,1,outputHeaders.length).setBackground('#d9eaf7').setFontWeight('bold');
-
-    var nearHeaders = [];
-    for (var ni=22;ni<Math.min(sh.length,35);ni++) nearHeaders.push(issue48v13Col_(ni+1)+'='+issue48v13Text_(sh[ni]));
+    output.getRange(1,1,1,previewHeaders.length).setBackground('#d9eaf7').setFontWeight('bold');
+    [15,16,17,18,20,21,22,23,24,25,26].forEach(function(c){output.getRange(2,c,out.length,1).setNumberFormat('#,##0');});
+    output.getRange(2,1,out.length,1).setNumberFormat('0');
 
     var statusRows = [
       ['항목','값'],
-      ['버전','v1.3-ISSUE48-SOURCE-PURCHASE-COLUMN-DIAGNOSTIC'],
+      ['버전','v1.0-ISSUE49-APR-JUN-VAT-PREVIEW'],
       ['상태','PASS'],['단계','DONE'],
-      ['메시지','원천 매입금액 열 위치 진단 완료'],
+      ['메시지','2026년 4~6월 VAT 최신 원천 미리보기 완료'],
       ['운영시트 변경','0'],
-      ['원천전체열수',sourceLastCol],
-      ['원천전체데이터행',sourceLastRow-1],
-      ['VAT상반기상세행',vatH1Rows],
-      ['원천H1주문키매칭행',h1OrderTargetRows],
-      ['원천H1생성대상행',h1SourceRows],
-      ['검증상반기주문',verifyOrders],
-      ['검증기준총매입금액',Math.round(verifyPurchase)],
-      ['AC현재열','AC / '+issue48v13Text_(sh[acIx])],
-      ['AC_H1합계',Math.round(stats[acIx].h1Sum)],
-      ['AC_H1_10억초과',stats[acIx].h1Gt1e9],
-      ['AC_H1_1천만원이하양수',stats[acIx].h1Reasonable],
-      ['원천주변헤더_W_AI',nearHeaders.join(' | ')],
-      ['매입후보열수',candidateIxs.length]
+      ['원천전체행',stats.totalRows],
+      ['날짜파싱성공행',stats.dateParsed],
+      ['4~6월날짜범위행',stats.rangeRows],
+      ['취소/반품/환불제외행',stats.cancelExcluded],
+      ['매출0제외행',stats.salesZeroExcluded],
+      ['최종상세행',stats.finalRows],
+      ['고유주문수',Object.keys(uniqueOrders).length],
+      ['계정미확인',stats.accountMissing],
+      ['사업자번호미매핑',stats.businessMissing],
+      ['정산fallback행',stats.settlementFallback],
+      ['매입금액0행',stats.purchaseZero],
+      ['결제수단공란행',stats.paymentBlank],
+      ['순수매출합계',Math.round(stats.sales)],
+      ['정산기준금액합계',Math.round(stats.settlement)],
+      ['매입금액합계',Math.round(stats.purchase)],
+      ['매출부가세합계',Math.round(stats.salesVat)],
+      ['매입부가세합계',Math.round(stats.purchaseVat)],
+      ['납부예상부가세합계',Math.round(stats.payableVat)],
+      ['D계정기준열','D / '+dHeader],
+      ['AC매입기준열','AC / '+acHeader],
+      ['날짜선택열',issue49Col_(ix.date+1)+' / '+issue49Text_(headers[ix.date])],
+      ['매출선택열',issue49Col_(ix.sales+1)+' / '+issue49Text_(headers[ix.sales])],
+      ['정산선택열',ix.settlement>=0 ? issue49Col_(ix.settlement+1)+' / '+issue49Text_(headers[ix.settlement]) : '없음 / fallback 사용'],
+      ['주문번호선택열',issue49Col_(ix.orderNo+1)+' / '+issue49Text_(headers[ix.orderNo])],
+      ['결제수단선택열',ix.payment>=0 ? issue49Col_(ix.payment+1)+' / '+issue49Text_(headers[ix.payment]) : '없음']
     ];
-    candidates.forEach(function(s,i){
-      statusRows.push(['후보_'+(i+1),s.col+' / '+(s.header||'(공란)')+' / H1합계='+Math.round(s.h1Sum)+' / 검증차이='+s.diffVerify+' / H1>10억='+s.h1Gt1e9+' / H1<=1천만양수='+s.h1Reasonable+' / H1최대='+Math.round(s.h1Max)]);
+
+    ['2026-04','2026-05','2026-06'].forEach(function(m){
+      var x=stats.months[m];
+      statusRows.push([m+'_상세행',x.rows]);
+      statusRows.push([m+'_고유주문',Object.keys(x.orders).length]);
+      statusRows.push([m+'_순수매출',Math.round(x.sales)]);
+      statusRows.push([m+'_매입금액',Math.round(x.purchase)]);
+      statusRows.push([m+'_결제수단공란행',x.paymentBlank]);
     });
-    statusRows.push(['유력후보',best ? best.col+' / '+best.header+' / H1합계='+Math.round(best.h1Sum)+' / 검증차이='+best.diffVerify : '없음']);
     statusRows.push(['완료시각',new Date().toISOString()]);
-    issue48v13Write_(state,statusRows);
-    try { MailApp.sendEmail('beliun1001@gmail.com','[LOTTEON 자동작업 결과][PASS] ISSUE48-v1.3',statusRows.map(function(x){return x[0]+': '+x[1];}).join('\n')); } catch(mailError) {}
-    return {ok:true,best:best ? {col:best.col,header:best.header,h1Sum:best.h1Sum,diff:best.diffVerify} : null};
+    issue49WriteStatus_(state,statusRows);
+    try {
+      MailApp.sendEmail('beliun1001@gmail.com','[LOTTEON 자동작업 결과][PASS] ISSUE49-v1.0',statusRows.map(function(x){return x[0]+': '+x[1];}).join('\n'));
+    } catch (mailError) {}
+    return {ok:true,rows:stats.finalRows,orders:Object.keys(uniqueOrders).length,purchase:Math.round(stats.purchase)};
   } catch(e) {
-    issue48v13Write_(state,[
-      ['항목','값'],['버전','v1.3-ISSUE48-SOURCE-PURCHASE-COLUMN-DIAGNOSTIC'],
-      ['상태','ERROR'],['단계','FAILED'],['메시지','원천 매입금액 열 위치 진단 실패'],
-      ['오류',String(e&&e.message?e.message:e)],['운영시트 변경','0'],['갱신시각',new Date().toISOString()]
+    issue49WriteStatus_(state,[
+      ['항목','값'],['버전','v1.0-ISSUE49-APR-JUN-VAT-PREVIEW'],['상태','ERROR'],['단계','FAILED'],
+      ['메시지','2026년 4~6월 VAT 미리보기 실패'],['오류',String(e&&e.message?e.message:e)],['운영시트 변경','0'],['갱신시각',new Date().toISOString()]
     ]);
     throw e;
   }
 }
 
-function issue48v13FindFirst_(headers,names,fallback){
-  for(var n=0;n<names.length;n++){
-    var wanted=issue48v13Compact_(names[n]);
-    for(var i=0;i<headers.length;i++) if(issue48v13Compact_(headers[i])===wanted) return i;
+function issue49Indexes_(headers){
+  function find(names,fallback){
+    for(var n=0;n<names.length;n++){
+      var wanted=issue49Compact_(names[n]);
+      for(var i=0;i<headers.length;i++) if(issue49Compact_(headers[i])===wanted) return i;
+    }
+    return fallback;
   }
-  return fallback;
+  var x={
+    date:find(['마켓주문일자','주문일자','결제일자','주문일시'],0),
+    orderNo:find(['마켓주문번호','주문번호','주문ID','주문ID(마켓)'],2),
+    sales:find(['결제금액합계(원)','결제금액합계','결제금액','순수매출액','판매금액'],6),
+    settlement:find(['정산예정금액(원)','정산예정금액','실제정산금액','정산금액'],-1),
+    status:find(['주문상태','상태','클레임상태','처리상태'],-1),
+    customer:find(['고객명','수령인','수취인','구매자','주문자'],-1),
+    brand:find(['브랜드명','브랜드'],-1),
+    productNo:find(['마켓상품번호','상품번호','상품코드','판매자상품코드'],4),
+    productName:find(['상품명','상품명(옵션포함)','등록상품명'],-1),
+    quantity:find(['판매수량','수량','구매수량'],-1),
+    payment:find(['결제수단','결제정보','결제방법','카드사','결제수단/카드사','결제수단(카드사)','구매결제수단'],-1)
+  };
+  if(x.date<0||x.orderNo<0||x.sales<0) throw new Error('날짜/주문번호/매출 필수 헤더를 찾지 못했습니다.');
+  return x;
 }
-function issue48v13TargetKey_(account,order){
-  var a=issue48v13Text_(account).toLowerCase(), o=issue48v13OrderNorm_(order);
-  return a&&o ? a+'|'+o : '';
+function issue49BusinessNo_(marketId){
+  var s=issue49Text_(marketId).toLowerCase();
+  if(s==='beliun1021'||s==='1021') return '227-27-04928';
+  if(s==='beliun1023'||s==='1023') return '835-58-00765';
+  if(s==='beliun1024'||s==='1024') return '606-45-93763';
+  return '';
 }
-function issue48v13OrderNorm_(v){return issue48v13Text_(v).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
-function issue48v13Compact_(v){return issue48v13Text_(v).toLowerCase().replace(/\s/g,'');}
-function issue48v13Text_(v){return v==null?'':String(v).trim();}
-function issue48v13Number_(v){
-  if(typeof v==='number') return isNaN(v)?0:v;
-  var n=Number(String(v==null?'0':v).replace(/[원,\s]/g,''));
-  return isNaN(n)?0:n;
-}
-function issue48v13Date_(v){
+function issue49SplitVat_(amount){var total=Math.round(issue49Number_(amount));var supply=Math.round(total/1.1);return {supply:supply,vat:total-supply};}
+function issue49At_(row,index){return index>=0&&index<row.length?row[index]:'';}
+function issue49Number_(v){if(typeof v==='number')return isNaN(v)?0:v;var n=Number(String(v==null?'':v).replace(/[원,%\s]/g,''));return isNaN(n)?0:n;}
+function issue49Text_(v){return String(v==null?'':v).trim();}
+function issue49Compact_(v){return issue49Text_(v).toLowerCase().replace(/[\s._()\[\]{}\-\/]/g,'');}
+function issue49OrderNorm_(v){return issue49Text_(v).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
+function issue49DateIso_(v){
   if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime())) return Utilities.formatDate(v,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd');
-  return issue48v13Text_(v);
+  var s=issue49Text_(v); if(!s)return '';
+  var m=s.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})/); if(m)return m[1]+'-'+issue49Pad_(m[2])+'-'+issue49Pad_(m[3]);
+  var m2=s.match(/^(\d{4})(\d{2})(\d{2})/); if(m2)return m2[1]+'-'+m2[2]+'-'+m2[3];
+  return '';
 }
-function issue48v13Col_(n){var s='';while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
-function issue48v13Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
-function issue48v13Write_(sheet,rows){
-  sheet.clearContents();
-  sheet.getRange(1,1,rows.length,2).setValues(rows);
-  sheet.setFrozenRows(1);
-  sheet.getRange(1,1,1,2).setBackground('#d9eaf7').setFontWeight('bold');
-  SpreadsheetApp.flush();
-}
+function issue49Pad_(v){v=String(v);return v.length<2?'0'+v:v;}
+function issue49Col_(n){var s='';while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
+function issue49Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
+function issue49WriteStatus_(sheet,rows){sheet.clearContents();sheet.getRange(1,1,rows.length,2).setValues(rows);sheet.setFrozenRows(1);sheet.getRange(1,1,1,2).setBackground('#d9eaf7').setFontWeight('bold');SpreadsheetApp.flush();}
 function runLotteonRemoteTaskContinueRemote_(){return runLotteonRemoteTaskStartRemote_();}
