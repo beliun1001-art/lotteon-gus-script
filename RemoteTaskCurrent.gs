@@ -1,181 +1,157 @@
 /**
- * Issue #51 v1.1 read-only difference diagnostic.
- * Compares the completed 1,893-order preview with the protected old 1,355-order
- * production verification and classifies the 538 new orders, especially the
- * 537 NO_MATCH rows. No production sheet is modified.
+ * Issue #52 v1.0 read-only source completeness diagnostic.
+ * Investigates 528 new NO_MATCH orders with purchase=0 and 9 positive-purchase
+ * NO_MATCH orders from Issue #51. No production sheet is modified.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE51-v1.1-20260812',
-  title: '현재 VAT 카드매칭 차이·신규 NO_MATCH 원인 진단',
+  id: 'ISSUE52-v1.0-20260813',
+  title: '신규 538주문 매입0원 원천 완전성 진단',
   enabled: true,
-  outputSheet: 'ISSUE51_차이진단',
-  statusSheet: 'ISSUE51_실행상태'
+  outputSheet: 'ISSUE52_매입0원원천진단',
+  statusSheet: 'ISSUE52_진단상태'
 };
 
 function runLotteonRemoteTaskStartRemote_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
-  var state = issue51v11Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  issue51v11Status_(state, [
-    ['항목','값'],['버전','v1.1-ISSUE51-DIFF-NEW-NOMATCH-DIAGNOSTIC'],
-    ['상태','RUNNING'],['단계','LOAD'],['메시지','기존 1,355 상태차이 및 신규 538 NO_MATCH 원인 진단 시작'],['운영시트 변경','0']
-  ]);
+  var state = issue52Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
+  issue52WriteStatus_(state,[['항목','값'],['버전','v1.0-ISSUE52-ZERO-PURCHASE-SOURCE-COMPLETENESS'],['상태','RUNNING'],['단계','LOAD'],['메시지','신규 매입0원 원천 완전성 진단 시작'],['운영시트 변경','0']]);
 
   try {
     var preview = ss.getSheetByName('ISSUE51_카드매칭전체PREVIEW');
-    var old = ss.getSheetByName('부가세_카드매칭검증');
+    var source = ss.getSheetByName('매출데이터_붙여넣기');
     var history = ss.getSheetByName('카드사용내역_붙여넣기');
     if (!preview || preview.getLastRow() < 2) throw new Error('ISSUE51_카드매칭전체PREVIEW가 없습니다.');
-    if (!old || old.getLastRow() < 2) throw new Error('부가세_카드매칭검증이 없습니다.');
+    if (!source || source.getLastRow() < 2) throw new Error('매출데이터_붙여넣기가 없습니다.');
     if (!history || history.getLastRow() < 2) throw new Error('카드사용내역_붙여넣기가 없습니다.');
 
-    var pv = preview.getDataRange().getValues();
-    var ph = pv[0].map(issue51v11Text_);
-    var pi = issue51v11Indexes_(ph, {
-      account:['쿠팡계정ID'], order:['주문번호'], date:['주문일'], purchase:['주문매입금액'],
-      payment:['롯데결제수단'], origin:['주문구분'], status:['카드매칭상태'], reason:['카드매칭근거']
-    });
-    issue51v11Require_(pi.account>=0&&pi.order>=0&&pi.date>=0&&pi.purchase>=0&&pi.origin>=0&&pi.status>=0&&pi.reason>=0, 'preview 필수 헤더 누락');
+    var pv=preview.getDataRange().getValues(), ph=pv[0].map(issue52Text_);
+    var pi=issue52Indexes_(ph,{account:['쿠팡계정ID'],order:['주문번호'],date:['주문일'],purchase:['주문매입금액'],origin:['주문구분'],status:['카드매칭상태']});
+    issue52Require_(pi.account>=0&&pi.order>=0&&pi.date>=0&&pi.purchase>=0&&pi.origin>=0&&pi.status>=0,'Issue51 preview 필수 헤더 누락');
 
-    var ov = old.getDataRange().getValues();
-    var oh = ov[0].map(issue51v11Text_);
-    var oi = issue51v11Indexes_(oh, {year:['신고연도'],half:['반기'],account:['쿠팡계정ID'],order:['주문번호'],status:['카드매칭상태']});
-    issue51v11Require_(oi.account>=0&&oi.order>=0&&oi.status>=0, '기존 카드검증 필수 헤더 누락');
-
-    var oldMap = {}, oldRows = 0, oldCounts = {MATCHED:0,NON_CARD:0,AMBIGUOUS:0,NO_MATCH:0};
-    for (var o=1;o<ov.length;o++) {
-      var orow=ov[o];
-      if (oi.year>=0 && issue51v11Text_(orow[oi.year])!=='2026') continue;
-      if (oi.half>=0 && issue51v11Text_(orow[oi.half])!=='상반기') continue;
-      var ok=issue51v11Key_(orow[oi.account],orow[oi.order]); if(!ok) continue;
-      var os=issue51v11StatusName_(orow[oi.status]);
-      if (oldMap[ok]) throw new Error('기존 카드검증 정규화키 중복: '+ok);
-      oldMap[ok]={status:os}; oldRows++; oldCounts[os]=(oldCounts[os]||0)+1;
-    }
-    issue51v11Require_(oldRows===1355, '기존 카드검증 주문수 불일치: '+oldRows);
-    issue51v11Require_(oldCounts.MATCHED===810&&oldCounts.NON_CARD===494&&oldCounts.AMBIGUOUS===1&&oldCounts.NO_MATCH===50,
-      '기존 카드검증 보호 기준 불일치: '+JSON.stringify(oldCounts));
-
-    var hv=history.getDataRange().getValues(), hh=hv[0].map(issue51v11Text_);
-    var hi=issue51v11Indexes_(hh,{date:['승인일','이용일','거래일','사용일','승인일자'],amount:['승인금액','이용금액','거래금액'],status:['승인상태','승인/취소구분','상태'],lotte:['롯데계열여부']});
-    issue51v11Require_(hi.date>=0&&hi.amount>=0, '카드 원본 승인일/금액 헤더 누락');
-    var rawAny={}, rawLotte={};
-    for(var h=1;h<hv.length;h++){
-      var hr=hv[h], hd=issue51v11Date_(hr[hi.date]), ha=Math.abs(issue51v11Num_(hr[hi.amount]));
-      if(!hd||!ha)continue;
-      var hs=hi.status>=0?issue51v11Compact_(hr[hi.status]):'';
-      if(hs.indexOf('취소')>=0||hs.indexOf('cancel')>=0)continue;
-      var hk=hd+'|'+String(Math.round(ha)); rawAny[hk]=true;
-      if(hi.lotte>=0 && issue51v11IsLotte_(hr[hi.lotte])) rawLotte[hk]=true;
-    }
-
-    issue51v11Require_(pv.length-1===1893, 'preview 주문수 불일치: '+(pv.length-1));
-    var transitions={}, changed=0, overlap=0, existingSame=0;
-    var previewCounts={MATCHED:0,NON_CARD:0,AMBIGUOUS:0,NO_MATCH:0};
-    var newCounts={MATCHED:0,NON_CARD:0,AMBIGUOUS:0,NO_MATCH:0};
-    var newRows=0, newNo=0, newNoPurchase=0, newNoZero=0, newNoPaymentBlank=0;
-    var newNoMonths={'2026-04':0,'2026-05':0,'2026-06':0};
-    var rawCats={LOTTE_EXACT_RAW:0,EXACT_RAW_NO_LOTTE_FLAG:0,NO_EXACT_RAW:0,PURCHASE_ZERO:0};
-    var reasons={}, diag=[];
-
+    var zeroTargets={}, positiveTargets=[], zeroMonths={}, zeroAccounts={}, positiveSum=0, newOrders=0, newNo=0;
     for(var p=1;p<pv.length;p++){
-      var pr=pv[p], key=issue51v11Key_(pr[pi.account],pr[pi.order]);
-      if(!key)throw new Error('preview 주문키 공란 row '+(p+1));
-      var ns=issue51v11StatusName_(pr[pi.status]);
-      previewCounts[ns]=(previewCounts[ns]||0)+1;
-      var origin=issue51v11Text_(pr[pi.origin]), purchase=issue51v11Num_(pr[pi.purchase]);
-      var date=issue51v11Date_(pr[pi.date]), payment=pi.payment>=0?issue51v11Text_(pr[pi.payment]):'';
-      var reason=issue51v11Text_(pr[pi.reason]);
+      var pr=pv[p];
+      if(issue52Text_(pr[pi.origin])!=='신규538')continue;
+      newOrders++;
+      if(issue52Status_(pr[pi.status])!=='NO_MATCH')continue;
+      newNo++;
+      var key=issue52Key_(pr[pi.account],pr[pi.order]);
+      var d=issue52Date_(pr[pi.date]), amt=issue52Num_(pr[pi.purchase]);
+      if(!amt){
+        zeroTargets[key]={account:issue52Text_(pr[pi.account]),order:issue52Text_(pr[pi.order]),date:d,rows:0,acSum:0,blank:0,numZero:0,textZero:0,positive:0,negative:0,nonNumeric:0};
+        var m=d?d.slice(0,7):'(날짜공란)'; zeroMonths[m]=(zeroMonths[m]||0)+1;
+        var a=issue52Text_(pr[pi.account])||'(계정공란)'; zeroAccounts[a]=(zeroAccounts[a]||0)+1;
+      } else {
+        positiveTargets.push({key:key,account:issue52Text_(pr[pi.account]),order:issue52Text_(pr[pi.order]),date:d,purchase:amt});
+        positiveSum+=amt;
+      }
+    }
+    issue52Require_(newOrders===538,'신규 주문수 불일치: '+newOrders);
+    issue52Require_(newNo===537,'신규 NO_MATCH 수 불일치: '+newNo);
+    issue52Require_(Object.keys(zeroTargets).length===528,'매입0원 주문수 불일치: '+Object.keys(zeroTargets).length);
+    issue52Require_(positiveTargets.length===9,'양수 매입 NO_MATCH 수 불일치: '+positiveTargets.length);
+    issue52Require_(Math.round(positiveSum)===714440,'양수 매입 NO_MATCH 합계 불일치: '+Math.round(positiveSum));
 
-      if(origin==='기존1355'){
-        overlap++;
-        if(!oldMap[key])throw new Error('기존1355 표시이나 보호 검증키 없음: '+key);
-        var os=oldMap[key].status, tk=os+' → '+ns;
-        transitions[tk]=(transitions[tk]||0)+1;
-        if(os!==ns){
-          changed++;
-          diag.push(['기존상태변경',pr[pi.account],pr[pi.order],date,Math.round(purchase),os,ns,payment,reason,'']);
-        } else existingSame++;
-      } else if(origin==='신규538'){
-        newRows++; newCounts[ns]=(newCounts[ns]||0)+1;
-        var cat='';
-        if(ns==='NO_MATCH'){
-          newNo++; newNoPurchase+=purchase;
-          if(!purchase){newNoZero++;cat='PURCHASE_ZERO';rawCats.PURCHASE_ZERO++;}
-          else {
-            var raw=issue51v11RawWindow_(date,purchase,rawAny,rawLotte);
-            cat=raw;
-            rawCats[raw]=(rawCats[raw]||0)+1;
-          }
-          if(!payment)newNoPaymentBlank++;
-          var month=date?date.slice(0,7):''; if(Object.prototype.hasOwnProperty.call(newNoMonths,month))newNoMonths[month]++;
-          reasons[reason||'(근거공란)']=(reasons[reason||'(근거공란)']||0)+1;
-        }
-        diag.push(['신규주문',pr[pi.account],pr[pi.order],date,Math.round(purchase),'',ns,payment,reason,cat]);
-      } else throw new Error('알 수 없는 주문구분: '+origin);
+    var sv=source.getDataRange().getValues(), sh=sv[0].map(issue52Text_);
+    issue52Require_(sh.length>=29,'원천이 AC열까지 존재하지 않습니다.');
+    issue52Require_(issue52Compact_(sh[3])===issue52Compact_('마켓아이디'),'D열 헤더 불일치: '+sh[3]);
+    issue52Require_(issue52Compact_(sh[28])===issue52Compact_('구매가격'),'AC열 헤더 불일치: '+sh[28]);
+    var si=issue52Indexes_(sh,{date:['마켓주문일자','주문일자','결제일자','주문일시'],order:['마켓주문번호','주문번호','주문ID','주문ID(마켓)'],sales:['결제금액합계(원)','결제금액합계','결제금액','순수매출액','판매금액'],status:['마켓주문상태','주문상태','상태','클레임상태','처리상태']});
+    issue52Require_(si.date>=0&&si.order>=0&&si.sales>=0,'원천 날짜/주문번호/매출 헤더 누락');
+
+    var candidateCols=issue52CandidateCols_(sh), candidateStats={};
+    candidateCols.forEach(function(c){candidateStats[c.index]={header:c.header,nonblank:0,numeric:0,positive:0,sum:0,max:0};});
+    var matchedKeys={}, sourceTargetRows=0, acBlank=0, acNumZero=0, acTextZero=0, acPositive=0, acNegative=0, acNonNumeric=0;
+
+    for(var r=1;r<sv.length;r++){
+      var row=sv[r], iso=issue52Date_(row[si.date]);
+      if(!iso||iso<'2026-04-01'||iso>'2026-06-30')continue;
+      var st=si.status>=0?issue52Text_(row[si.status]):'';
+      if(/취소|반품|교환|환불/.test(st))continue;
+      if(!issue52Num_(row[si.sales]))continue;
+      var key=issue52Key_(row[3],row[si.order]);
+      if(!zeroTargets[key])continue;
+      sourceTargetRows++; matchedKeys[key]=true;
+      var z=zeroTargets[key]; z.rows++;
+      var raw=row[28], rawText=issue52Text_(raw), n=issue52ParseMaybe_(raw);
+      if(rawText===''){z.blank++;acBlank++;}
+      else if(n===null){z.nonNumeric++;acNonNumeric++;}
+      else if(n===0){if(typeof raw==='number'){z.numZero++;acNumZero++;}else{z.textZero++;acTextZero++;}}
+      else if(n>0){z.positive++;z.acSum+=n;acPositive++;}
+      else {z.negative++;z.acSum+=n;acNegative++;}
+
+      candidateCols.forEach(function(c){
+        var v=row[c.index], txt=issue52Text_(v), cs=candidateStats[c.index];
+        if(txt!=='')cs.nonblank++;
+        var cn=issue52ParseMaybe_(v);
+        if(cn!==null){cs.numeric++;if(cn>0){cs.positive++;cs.sum+=cn;if(cn>cs.max)cs.max=cn;}}
+      });
     }
 
-    issue51v11Require_(overlap===1355&&newRows===538, '기존/신규 주문수 불일치: '+overlap+'/'+newRows);
-    issue51v11Require_(previewCounts.MATCHED===809&&previewCounts.NON_CARD===498&&previewCounts.AMBIGUOUS===0&&previewCounts.NO_MATCH===586,
-      'preview 보호 기준 불일치: '+JSON.stringify(previewCounts));
-    issue51v11Require_(newCounts.MATCHED===1&&newCounts.NON_CARD===0&&newCounts.AMBIGUOUS===0&&newCounts.NO_MATCH===537,
-      '신규538 상태 기준 불일치: '+JSON.stringify(newCounts));
+    var zeroKeys=Object.keys(zeroTargets), matchedZero=Object.keys(matchedKeys).length, unmatchedZero=zeroKeys.length-matchedZero;
+    var zeroAcPositiveOrders=0, zeroAcNonzeroSum=0;
+    zeroKeys.forEach(function(k){var z=zeroTargets[k];if(z.acSum!==0){zeroAcPositiveOrders++;zeroAcNonzeroSum+=z.acSum;}});
 
-    var out=issue51v11Ensure_(ss,LOTTEON_REMOTE_TASK.outputSheet);
-    out.clearContents();
-    var dh=['구분','쿠팡계정ID','주문번호','주문일','주문매입금액','기존상태','현재preview상태','롯데결제수단','현재매칭근거','raw0~+7일동일금액분류'];
-    out.getRange(1,1,1,dh.length).setValues([dh]);
-    if(diag.length)out.getRange(2,1,diag.length,dh.length).setValues(diag);
-    out.getRange(1,1,1,dh.length).setFontWeight('bold'); out.setFrozenRows(1);
+    var hv=history.getDataRange().getValues(), hh=hv[0].map(issue52Text_);
+    var hi=issue52Indexes_(hh,{date:['승인일','이용일','거래일','사용일','승인일자']});
+    issue52Require_(hi.date>=0,'카드 원본 승인일 헤더 누락');
+    var histMin='',histMax='';
+    for(var h=1;h<hv.length;h++){
+      var hd=issue52Date_(hv[h][hi.date]); if(!hd)continue;
+      if(!histMin||hd<histMin)histMin=hd;if(!histMax||hd>histMax)histMax=hd;
+    }
+    var posMin='',posMax='',windowBeyond=0,windowCovered=0,posMonths={};
+    positiveTargets.forEach(function(x){
+      if(!posMin||x.date<posMin)posMin=x.date;if(!posMax||x.date>posMax)posMax=x.date;
+      var m=x.date?x.date.slice(0,7):'(날짜공란)';posMonths[m]=(posMonths[m]||0)+1;
+      x.windowEnd=issue52Shift_(x.date,7);
+      x.coverageGap=!!(histMax&&x.windowEnd>histMax);
+      if(x.coverageGap)windowBeyond++;else windowCovered++;
+    });
+
+    var out=issue52Ensure_(ss,LOTTEON_REMOTE_TASK.outputSheet), detail=[];
+    zeroKeys.sort().forEach(function(k){var z=zeroTargets[k];detail.push(['매입0원',z.account,z.order,z.date,0,z.rows,Math.round(z.acSum),z.blank,z.numZero+z.textZero,z.positive,'','','']);});
+    positiveTargets.forEach(function(x){detail.push(['양수매입_NO_MATCH',x.account,x.order,x.date,Math.round(x.purchase),'','','','','',x.windowEnd,histMax,x.coverageGap?'CARD_HISTORY_GAP_POSSIBLE':'HISTORY_WINDOW_COVERED']);});
+    var dh=['구분','쿠팡계정ID','주문번호','주문일','preview주문매입금액','원천상세행','원천AC합계','AC공란셀','AC0셀','AC양수셀','+7일창끝','카드원본최종일','판정'];
+    out.clearContents();out.getRange(1,1,1,dh.length).setValues([dh]);if(detail.length)out.getRange(2,1,detail.length,dh.length).setValues(detail);out.getRange(1,1,1,dh.length).setFontWeight('bold');out.setFrozenRows(1);
 
     var rows=[
-      ['항목','값'],['버전','v1.1-ISSUE51-DIFF-NEW-NOMATCH-DIAGNOSTIC'],['상태','PASS'],['단계','DONE'],
-      ['메시지','기존 1,355 상태차이 및 신규 538 NO_MATCH 원인 분류 완료'],['운영시트 변경','0'],
-      ['기존검증주문',oldRows],['현재preview주문',pv.length-1],['기존겹침',overlap],['신규주문',newRows],
-      ['기존상태동일',existingSame],['기존상태변경',changed],
-      ['기존기준_MATCHED',oldCounts.MATCHED],['기존기준_NON_CARD',oldCounts.NON_CARD],['기존기준_AMBIGUOUS',oldCounts.AMBIGUOUS],['기존기준_NO_MATCH',oldCounts.NO_MATCH],
-      ['현재기존1355_MATCHED',808],['현재기존1355_NON_CARD',498],['현재기존1355_AMBIGUOUS',0],['현재기존1355_NO_MATCH',49],
-      ['신규538_MATCHED',newCounts.MATCHED],['신규538_NON_CARD',newCounts.NON_CARD],['신규538_AMBIGUOUS',newCounts.AMBIGUOUS],['신규538_NO_MATCH',newCounts.NO_MATCH],
-      ['신규NO_MATCH_매입합계',Math.round(newNoPurchase)],['신규NO_MATCH_매입0원',newNoZero],['신규NO_MATCH_결제수단공란',newNoPaymentBlank],
-      ['신규NO_MATCH_raw0~+7_롯데표시동일금액있음',rawCats.LOTTE_EXACT_RAW],
-      ['신규NO_MATCH_raw0~+7_동일금액있으나롯데표시없음',rawCats.EXACT_RAW_NO_LOTTE_FLAG],
-      ['신규NO_MATCH_raw0~+7_동일금액자체없음',rawCats.NO_EXACT_RAW],
-      ['신규NO_MATCH_4월',newNoMonths['2026-04']],['신규NO_MATCH_5월',newNoMonths['2026-05']],['신규NO_MATCH_6월',newNoMonths['2026-06']]
+      ['항목','값'],['버전','v1.0-ISSUE52-ZERO-PURCHASE-SOURCE-COMPLETENESS'],['상태','PASS'],['단계','DONE'],
+      ['메시지','신규 매입0원 528건 원천 완전성 및 양수 9건 카드기간 진단 완료'],['운영시트 변경','0'],
+      ['신규주문',newOrders],['신규NO_MATCH',newNo],['매입0원주문',zeroKeys.length],['양수매입NO_MATCH',positiveTargets.length],['양수매입NO_MATCH합계',Math.round(positiveSum)],
+      ['원천0원주문키매칭',matchedZero],['원천0원주문키미매칭',unmatchedZero],['원천0원대상상세행',sourceTargetRows],
+      ['AC헤더','AC / '+sh[28]],['AC공란셀',acBlank],['AC숫자0셀',acNumZero],['AC텍스트0셀',acTextZero],['AC양수셀',acPositive],['AC음수셀',acNegative],['AC비숫자셀',acNonNumeric],
+      ['preview0원이지만원천AC합계비0주문',zeroAcPositiveOrders],['해당원천AC합계',Math.round(zeroAcNonzeroSum)],
+      ['금액후보열수',candidateCols.length]
     ];
-    Object.keys(transitions).sort().forEach(function(k,i){rows.push(['상태전이_'+(i+1),k+' / '+transitions[k]+'건']);});
-    Object.keys(reasons).sort(function(a,b){return reasons[b]-reasons[a]||a.localeCompare(b);}).slice(0,10).forEach(function(k,i){rows.push(['신규NO_MATCH사유_'+(i+1),k+' / '+reasons[k]+'건']);});
+    candidateCols.forEach(function(c,i){var cs=candidateStats[c.index];rows.push(['금액후보_'+(i+1),issue52Col_(c.index+1)+' / '+c.header+' / 양수셀='+cs.positive+' / 양수합계='+Math.round(cs.sum)+' / 최대='+Math.round(cs.max)]);});
+    Object.keys(zeroMonths).sort().forEach(function(k){rows.push(['매입0원_'+k,zeroMonths[k]+'주문']);});
+    Object.keys(zeroAccounts).sort().forEach(function(k){rows.push(['매입0원계정_'+k,zeroAccounts[k]+'주문']);});
+    rows.push(['카드원본기간',(histMin||'')+'~'+(histMax||'')],['양수9건주문기간',(posMin||'')+'~'+(posMax||'')],['양수9건_+7일창카드원본최종일초과',windowBeyond],['양수9건_카드원본기간내',windowCovered],['7월카드내역필요가능성',windowBeyond>0?'있음 / '+windowBeyond+'건의 +7일창이 현재 카드원본 최종일을 초과':'현재 기간정보상 낮음']);
+    Object.keys(posMonths).sort().forEach(function(k){rows.push(['양수NO_MATCH_'+k,posMonths[k]+'주문']);});
     rows.push(['완료시각',new Date().toISOString()]);
-    issue51v11Status_(state,rows);
-    return {ok:true,changed:changed,newNoMatch:newNo,rawCats:rawCats};
+    issue52WriteStatus_(state,rows);
+    return {ok:true,zeroOrders:zeroKeys.length,matchedZero:matchedZero,positiveNoMatch:positiveTargets.length,historyGap:windowBeyond};
   } catch(e) {
-    issue51v11Status_(state,[['항목','값'],['버전','v1.1-ISSUE51-DIFF-NEW-NOMATCH-DIAGNOSTIC'],['상태','ERROR'],['단계','FAILED'],['메시지','카드매칭 차이 진단 실패'],['오류',String(e&&e.message?e.message:e)],['운영시트 변경','0']]);
+    issue52WriteStatus_(state,[['항목','값'],['버전','v1.0-ISSUE52-ZERO-PURCHASE-SOURCE-COMPLETENESS'],['상태','ERROR'],['단계','FAILED'],['메시지','신규 매입0원 원천 진단 실패'],['오류',String(e&&e.message?e.message:e)],['운영시트 변경','0']]);
     throw e;
   }
 }
 
-function issue51v11RawWindow_(date,amount,anyMap,lotteMap){
-  if(!date||!amount)return 'NO_EXACT_RAW';
-  var any=false,lotte=false;
-  for(var lag=0;lag<=7;lag++){
-    var d=issue51v11Shift_(date,lag),k=d+'|'+String(Math.round(Math.abs(amount)));
-    if(anyMap[k])any=true;if(lotteMap[k])lotte=true;
-  }
-  if(lotte)return 'LOTTE_EXACT_RAW';
-  if(any)return 'EXACT_RAW_NO_LOTTE_FLAG';
-  return 'NO_EXACT_RAW';
-}
-function issue51v11Shift_(s,days){var m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return '';var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+days));return Utilities.formatDate(d,'UTC','yyyy-MM-dd');}
-function issue51v11IsLotte_(v){var s=issue51v11Compact_(v);return s==='y'||s==='yes'||s==='true'||s==='1'||s.indexOf('롯데')>=0;}
-function issue51v11StatusName_(v){var s=issue51v11Text_(v).toUpperCase();if(s==='MASTER_MATCHED')return 'MATCHED';if(s==='MATCHED'||s==='NON_CARD'||s==='AMBIGUOUS'||s==='NO_MATCH')return s;return 'NO_MATCH';}
-function issue51v11Key_(a,o){a=issue51v11Text_(a).toLowerCase();o=issue51v11NormOrder_(o);return a&&o?a+'|'+o:'';}
-function issue51v11Indexes_(h,spec){var o={};Object.keys(spec).forEach(function(k){o[k]=issue51v11Find_(h,spec[k]);});return o;}
-function issue51v11Find_(h,names){for(var n=0;n<names.length;n++){var x=issue51v11Compact_(names[n]);for(var i=0;i<h.length;i++)if(issue51v11Compact_(h[i])===x)return i;}return -1;}
-function issue51v11Date_(v){if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return Utilities.formatDate(v,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd');var s=issue51v11Text_(v),m=s.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})/);if(m)return m[1]+'-'+issue51v11Pad_(m[2])+'-'+issue51v11Pad_(m[3]);return '';}
-function issue51v11Num_(v){if(typeof v==='number'&&isFinite(v))return v;var n=Number(issue51v11Text_(v).replace(/[원,%\s,]/g,''));return isFinite(n)?n:0;}
-function issue51v11Text_(v){return String(v==null?'':v).trim();}
-function issue51v11Compact_(v){return issue51v11Text_(v).toLowerCase().replace(/[\s._()\[\]{}\-\/]/g,'');}
-function issue51v11NormOrder_(v){return issue51v11Text_(v).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');}
-function issue51v11Pad_(v){v=String(v);return v.length<2?'0'+v:v;}
-function issue51v11Require_(ok,msg){if(!ok)throw new Error(msg);}
-function issue51v11Ensure_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}
-function issue51v11Status_(sh,rows){sh.clearContents();sh.getRange(1,1,rows.length,2).setValues(rows);sh.getRange(1,1,1,2).setFontWeight('bold');sh.setFrozenRows(1);}
+function issue52CandidateCols_(h){var out=[], seen={};var exact=['구매가격','구매금액','매입금액','매입가','매입가격','매입원가','원가','원가금액','purchaseprice','purchaseamount','cost'];for(var i=0;i<h.length;i++){var c=issue52Compact_(h[i]);for(var j=0;j<exact.length;j++){if(c===issue52Compact_(exact[j])){if(!seen[i]){seen[i]=true;out.push({index:i,header:h[i]});}break;}}}return out;}
+function issue52Indexes_(h,spec){var o={};Object.keys(spec).forEach(function(k){o[k]=issue52Find_(h,spec[k]);});return o;}
+function issue52Find_(h,names){for(var n=0;n<names.length;n++){var w=issue52Compact_(names[n]);for(var i=0;i<h.length;i++)if(issue52Compact_(h[i])===w)return i;}return -1;}
+function issue52Key_(a,o){var aa=issue52Text_(a).toLowerCase(),oo=issue52Text_(o).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');return aa&&oo?aa+'|'+oo:'';}
+function issue52Status_(v){var s=issue52Text_(v).toUpperCase();return s==='MATCHED'||s==='MASTER_MATCHED'?'MATCHED':s==='NON_CARD'?'NON_CARD':s==='AMBIGUOUS'?'AMBIGUOUS':'NO_MATCH';}
+function issue52Date_(v){if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return Utilities.formatDate(v,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd');var s=issue52Text_(v),m=s.match(/^(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})/);if(m)return m[1]+'-'+issue52Pad_(m[2])+'-'+issue52Pad_(m[3]);if(/^\d{2}[.\/-]\d{1,2}$/.test(s)){var q=s.match(/^(\d{2})[.\/-](\d{1,2})$/);return '2026-'+issue52Pad_(q[1])+'-'+issue52Pad_(q[2]);}return '';}
+function issue52Shift_(s,days){var m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return '';var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+days));return Utilities.formatDate(d,'UTC','yyyy-MM-dd');}
+function issue52ParseMaybe_(v){if(typeof v==='number')return isFinite(v)?v:null;var s=issue52Text_(v);if(s==='')return null;var n=Number(s.replace(/[원,%\s,]/g,''));return isFinite(n)?n:null;}
+function issue52Num_(v){var n=issue52ParseMaybe_(v);return n===null?0:n;}
+function issue52Text_(v){return String(v==null?'':v).trim();}
+function issue52Compact_(v){return issue52Text_(v).toLowerCase().replace(/[\s._()\[\]{}\-\/]/g,'');}
+function issue52Pad_(v){v=String(v);return v.length<2?'0'+v:v;}
+function issue52Col_(n){var s='';while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s;}
+function issue52Require_(ok,msg){if(!ok)throw new Error(msg);}
+function issue52Ensure_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}
+function issue52WriteStatus_(sh,rows){sh.clearContents();sh.getRange(1,1,rows.length,2).setValues(rows);sh.getRange(1,1,1,2).setFontWeight('bold');sh.setFrozenRows(1);}
