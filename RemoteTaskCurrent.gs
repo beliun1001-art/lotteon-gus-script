@@ -1,202 +1,167 @@
 /**
- * Issue #57 v1.0 read-only deep diagnostic for 9 blocked card-matching transitions.
- * Reads current production VAT/card evidence plus Issue54/55 diagnostics.
- * Writes only ISSUE57_* sheets.
+ * Issue #58 v1.0 read-only cause split for 4 NON_CARD suspect orders.
+ * Compares old reused payment, current corrected VAT payment, no payment filter,
+ * and physical-card-only matching under the same Issue54 used-before evidence set.
+ * Writes only ISSUE58_* sheets.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE57-v1.0-20260813',
-  title: 'Issue56 차단 9건 카드원본·canonical 심층진단',
+  id: 'ISSUE58-v1.0-20260813',
+  title: 'Issue57 의심 4건 결제수단 재사용 vs current VAT 원인분리',
   enabled: true,
-  outputSheet: 'ISSUE57_차단9건심층진단',
-  statusSheet: 'ISSUE57_진단상태'
+  outputSheet: 'ISSUE58_4건원인분리',
+  statusSheet: 'ISSUE58_진단상태'
 };
-var ISSUE57_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
-var ISSUE57_BOOT_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
+var ISSUE58_CODE_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Code.gs';
+var ISSUE58_BOOT_URL = 'https://raw.githubusercontent.com/beliun1001-art/lotteon-gus-script/main/Patch_v6_24_bootstrap_auto_continue.gs';
 
 function runLotteonRemoteTaskStartRemote_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
-  var status = i57Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  i57Write_(status, [
-    ['항목','값'],['버전','v1.0-ISSUE57-BLOCKED9-DEEP-DIAGNOSTIC'],['상태','RUNNING'],['단계','LOAD'],
-    ['메시지','Issue56 차단 9건 raw/canonical 심층진단 시작'],['운영시트 변경','0']
+  var status = i58Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
+  i58Write_(status, [
+    ['항목','값'],['버전','v1.0-ISSUE58-PAYMENT-SOURCE-CAUSE-SPLIT'],['상태','RUNNING'],['단계','LOAD'],
+    ['메시지','의심 4건 old/current/no-payment 원인분리 시작'],['운영시트 변경','0']
   ]);
+
+  var watched = ['부가세_카드매칭검증','부가세_신고자료','카드사용내역_붙여넣기','카드_마스터',
+                 'ISSUE54_카드매칭전체PREVIEW','ISSUE55_카드매칭차이진단',
+                 'ISSUE56_상태변경12건판정','ISSUE57_차단9건심층진단'];
+  var before = {};
   try {
-    var deltaSh = ss.getSheetByName('ISSUE55_카드매칭차이진단');
-    var previewSh = ss.getSheetByName('ISSUE54_카드매칭전체PREVIEW');
-    var oldSh = ss.getSheetByName('부가세_카드매칭검증');
-    var vatSh = ss.getSheetByName('부가세_신고자료');
-    var histSh = ss.getSheetByName('카드사용내역_붙여넣기');
-    var masterSh = ss.getSheetByName('카드_마스터');
-    if (!deltaSh || deltaSh.getLastRow() < 2) throw new Error('ISSUE55_카드매칭차이진단이 없습니다.');
-    if (!previewSh || previewSh.getLastRow() < 2) throw new Error('ISSUE54_카드매칭전체PREVIEW가 없습니다.');
-    if (!oldSh || oldSh.getLastRow() < 2) throw new Error('부가세_카드매칭검증이 없습니다.');
-    if (!vatSh || vatSh.getLastRow() < 2) throw new Error('부가세_신고자료가 없습니다.');
-    if (!histSh || histSh.getLastRow() < 2) throw new Error('카드사용내역_붙여넣기가 없습니다.');
-    if (!masterSh || masterSh.getLastRow() < 2) throw new Error('카드_마스터가 없습니다.');
+    watched.forEach(function(name) {
+      var sh = ss.getSheetByName(name);
+      if (sh) before[name] = i58Sig_(sh.getDataRange().getValues());
+    });
 
-    var sigs = {
-      old:i57Sig_(oldSh.getDataRange().getValues()), vat:i57Sig_(vatSh.getDataRange().getValues()),
-      hist:i57Sig_(histSh.getDataRange().getValues()), master:i57Sig_(masterSh.getDataRange().getValues()),
-      preview:i57Sig_(previewSh.getDataRange().getValues()), delta:i57Sig_(deltaSh.getDataRange().getValues())
-    };
-    var targets = i57LoadTargets_(deltaSh);
-    i57Req_(targets.length === 9, '차단 대상 9건 불일치: ' + targets.length);
-    var trans = {};
-    targets.forEach(function(t){ trans[t.transition]=(trans[t.transition]||0)+1; });
-    i57Req_(trans['MATCHED -> NO_MATCH'] === 5, 'MATCHED -> NO_MATCH 대상 불일치');
-    i57Req_(trans['NO_MATCH -> NON_CARD'] === 4, 'NO_MATCH -> NON_CARD 대상 불일치');
-
-    var deep = i57RunMainEvidence_(ss, targets);
-    i57Req_(deep && deep.rows && deep.rows.length === 9, '심층진단 결과 9건 불일치');
-    i57Req_(deep.canonicalRows === 1990, 'canonical 증빙행 불일치: ' + deep.canonicalRows);
-
-    var out = i57Ensure_(ss, LOTTEON_REMOTE_TASK.outputSheet);
+    var result = i58RunCore_(ss);
+    var out = i58Ensure_(ss, LOTTEON_REMOTE_TASK.outputSheet);
     out.clearContents();
     var headers = [
-      '쿠팡계정ID','주문번호','상태이동','주문일','기존매입금액','신규매입금액','매입금액변경',
-      '기존승인번호','기존승인금액','기존끝4','신규승인번호','신규승인금액','신규끝4',
-      '기존매칭근거','신규매칭근거','기존canonicalKey','신규canonicalKey',
-      'raw기존증빙건수','raw취소성값건수','canonical기존증빙건수','corrected금액canonical후보','corrected금액+끝4후보','corrected금액+끝4_주문일7일내후보',
-      '분류','판정사유','canonical샘플','raw샘플'
+      '쿠팡계정ID','주문번호','주문일','corrected매입금액',
+      'Issue54상태','Issue54결제수단','currentVAT결제수단','결제수단동일',
+      'OLD_REUSE상태','CURRENT_VAT상태','NO_PAYMENT상태','PHYSICAL_ONLY상태',
+      'OLD_REUSE근거','CURRENT_VAT근거','NO_PAYMENT근거','PHYSICAL_ONLY근거',
+      'exactPhysical전체','exactPhysical미사용','exactNonCard전체','exactNonCard미사용',
+      'physical후보요약','nonCard후보요약','원인분류'
     ];
     out.getRange(1,1,1,headers.length).setValues([headers]);
-    out.getRange(2,1,deep.rows.length,headers.length).setValues(deep.rows);
+    if (result.rows.length) out.getRange(2,1,result.rows.length,headers.length).setValues(result.rows);
     out.getRange(1,1,1,headers.length).setFontWeight('bold');
     out.setFrozenRows(1);
     SpreadsheetApp.flush();
 
-    i57Req_(i57Sig_(oldSh.getDataRange().getValues()) === sigs.old, '부가세_카드매칭검증이 진단 중 변경되었습니다.');
-    i57Req_(i57Sig_(vatSh.getDataRange().getValues()) === sigs.vat, '부가세_신고자료가 진단 중 변경되었습니다.');
-    i57Req_(i57Sig_(histSh.getDataRange().getValues()) === sigs.hist, '카드사용내역_붙여넣기가 진단 중 변경되었습니다.');
-    i57Req_(i57Sig_(masterSh.getDataRange().getValues()) === sigs.master, '카드_마스터가 진단 중 변경되었습니다.');
-    i57Req_(i57Sig_(previewSh.getDataRange().getValues()) === sigs.preview, 'ISSUE54 preview가 진단 중 변경되었습니다.');
-    i57Req_(i57Sig_(deltaSh.getDataRange().getValues()) === sigs.delta, 'ISSUE55 delta가 진단 중 변경되었습니다.');
+    watched.forEach(function(name) {
+      var sh = ss.getSheetByName(name);
+      if (before[name] && sh) i58Req_(i58Sig_(sh.getDataRange().getValues()) === before[name], name + '이 진단 중 변경되었습니다.');
+    });
 
-    var counts = {EXPLAINED_SAFE:0,LIKELY_MATCHER_BUG:0,DATA_GAP_REVIEW:0,INVALID_STATE:0};
-    deep.rows.forEach(function(row){ var c=String(row[23]||''); counts[c]=(counts[c]||0)+1; });
-    var approve = (counts.EXPLAINED_SAFE === 9) ? 'YES' : 'NO';
+    var s = result.stats;
     var rows = [
-      ['항목','값'],['버전','v1.0-ISSUE57-BLOCKED9-DEEP-DIAGNOSTIC'],['상태','PASS'],['단계','DONE'],
-      ['메시지','Issue56 차단 9건 raw/canonical 심층진단 완료'],['운영시트 변경','0'],
-      ['진단대상',9],['MATCHED -> NO_MATCH',5],['NO_MATCH -> NON_CARD',4],
-      ['canonical증빙행',deep.canonicalRows],['rawHistory행',deep.historyRows],
-      ['EXPLAINED_SAFE',counts.EXPLAINED_SAFE||0],['LIKELY_MATCHER_BUG',counts.LIKELY_MATCHER_BUG||0],
-      ['DATA_GAP_REVIEW',counts.DATA_GAP_REVIEW||0],['INVALID_STATE',counts.INVALID_STATE||0],
-      ['운영반영자동승인',approve],['부가세_카드매칭검증 변경','0'],['부가세_신고자료 변경','0'],
+      ['항목','값'],['버전','v1.0-ISSUE58-PAYMENT-SOURCE-CAUSE-SPLIT'],['상태','PASS'],['단계','DONE'],
+      ['메시지','의심 4건 old/current/no-payment 원인분리 완료'],['운영시트 변경','0'],
+      ['진단대상',s.targets],['canonical증빙행',s.canonicalRows],
+      ['OLD_PAYMENT_REUSE_BUG',s.OLD_PAYMENT_REUSE_BUG || 0],
+      ['MATCHER_PAYMENT_PRIORITY_BUG',s.MATCHER_PAYMENT_PRIORITY_BUG || 0],
+      ['BOTH_PAYMENT_AND_MATCHER',s.BOTH_PAYMENT_AND_MATCHER || 0],
+      ['ALLOCATION_CONFLICT',s.ALLOCATION_CONFLICT || 0],
+      ['DIAGNOSTIC_FALSE_POSITIVE',s.DIAGNOSTIC_FALSE_POSITIVE || 0],
+      ['UNRESOLVED',s.UNRESOLVED || 0],
+      ['old/current결제수단다름',s.paymentDifferent || 0],
+      ['CURRENT_VAT에서MATCHED',s.currentMatched || 0],
+      ['NO_PAYMENT에서MATCHED',s.noPaymentMatched || 0],
+      ['PHYSICAL_ONLY에서MATCHED',s.physicalMatched || 0],
+      ['exactPhysical미사용후보존재',s.physicalUnusedExists || 0],
+      ['운영반영자동승인','NO'],
+      ['부가세_카드매칭검증 변경','0'],['부가세_신고자료 변경','0'],
       ['카드사용내역_붙여넣기 변경','0'],['카드_마스터 변경','0']
     ];
-    deep.rows.forEach(function(r,idx){ if (String(r[23]||'') !== 'EXPLAINED_SAFE') rows.push(['확인필요_'+(idx+1), r[0]+' | '+r[1]+' | '+r[2]+' | '+r[23]+' | '+r[24]]); });
+    result.summaries.forEach(function(x,i) { rows.push(['확인_'+(i+1),x]); });
     rows.push(['완료시각',new Date().toISOString()]);
-    i57Write_(status, rows);
-    return {ok:true,done:true,counts:counts,approve:approve};
+    i58Write_(status, rows);
+    return {ok:true,done:true,stats:s};
   } catch (e) {
-    i57Write_(status, [
-      ['항목','값'],['버전','v1.0-ISSUE57-BLOCKED9-DEEP-DIAGNOSTIC'],['상태','ERROR'],['단계','FAILED'],
-      ['메시지','Issue56 차단 9건 심층진단 실패'],['오류',String(e&&e.message?e.message:e)],['운영시트 변경','0'],['완료시각',new Date().toISOString()]
+    i58Write_(status, [
+      ['항목','값'],['버전','v1.0-ISSUE58-PAYMENT-SOURCE-CAUSE-SPLIT'],['상태','ERROR'],['단계','FAILED'],
+      ['메시지','의심 4건 결제수단 원인분리 실패'],['오류',String(e && e.message ? e.message : e)],
+      ['운영시트 변경','0'],['완료시각',new Date().toISOString()]
     ]);
     throw e;
   }
 }
 
-function runLotteonRemoteTaskContinueRemote_(){ return {ok:true,done:true,reason:'NO_CONTINUE_REQUIRED'}; }
-
-function i57LoadTargets_(sheet) {
-  var v=sheet.getDataRange().getValues(), h=v[0].map(i57Text_);
-  var x={
-    account:i57Find_(h,['쿠팡계정ID']),order:i57Find_(h,['주문번호']),date:i57Find_(h,['주문일']),transition:i57Find_(h,['상태이동']),
-    oldPurchase:i57Find_(h,['기존매입금액']),newPurchase:i57Find_(h,['신규매입금액']),
-    oldApprovalNo:i57Find_(h,['기존승인번호']),newApprovalNo:i57Find_(h,['신규승인번호']),
-    oldApprovalAmount:i57Find_(h,['기존승인금액']),newApprovalAmount:i57Find_(h,['신규승인금액']),
-    oldEnd4:i57Find_(h,['기존끝4']),newEnd4:i57Find_(h,['신규끝4']),
-    oldReason:i57Find_(h,['기존매칭근거']),newReason:i57Find_(h,['신규매칭근거']),
-    oldKey:i57Find_(h,['기존canonicalKey']),newKey:i57Find_(h,['신규canonicalKey'])
-  };
-  i57Req_(x.account>=0&&x.order>=0&&x.transition>=0&&x.newPurchase>=0,'ISSUE55 필수 헤더 누락');
-  var out=[];
-  for(var r=1;r<v.length;r++){
-    var tr=i57Text_(v[r][x.transition]);
-    if(tr!=='MATCHED -> NO_MATCH' && tr!=='NO_MATCH -> NON_CARD') continue;
-    out.push({
-      account:i57Text_(v[r][x.account]).toLowerCase(),order:i57Text_(v[r][x.order]),date:i57Val_(v[r],x.date),transition:tr,
-      oldPurchase:i57Num_(i57Raw_(v[r],x.oldPurchase)),newPurchase:i57Num_(i57Raw_(v[r],x.newPurchase)),
-      oldApprovalNo:i57Val_(v[r],x.oldApprovalNo),newApprovalNo:i57Val_(v[r],x.newApprovalNo),
-      oldApprovalAmount:i57Num_(i57Raw_(v[r],x.oldApprovalAmount)),newApprovalAmount:i57Num_(i57Raw_(v[r],x.newApprovalAmount)),
-      oldEnd4:i57End4_(i57Val_(v[r],x.oldEnd4)),newEnd4:i57End4_(i57Val_(v[r],x.newEnd4)),
-      oldReason:i57Val_(v[r],x.oldReason),newReason:i57Val_(v[r],x.newReason),oldKey:i57Val_(v[r],x.oldKey),newKey:i57Val_(v[r],x.newKey)
-    });
-  }
-  return out;
+function runLotteonRemoteTaskContinueRemote_() {
+  return {ok:true,done:true,reason:'NO_CONTINUE_REQUIRED'};
 }
 
-function i57RunMainEvidence_(ss, targets) {
-  var code=i57Fetch_(ISSUE57_CODE_URL), boot=i57Fetch_(ISSUE57_BOOT_URL), sid=ss.getId();
-  var invocation=[
+function i58RunCore_(ss) {
+  var code = i58Fetch_(ISSUE58_CODE_URL);
+  var boot = i58Fetch_(ISSUE58_BOOT_URL);
+  var sid = ss.getId();
+  var invocation = [
     ';(function(){',
-    'var targets='+JSON.stringify(targets)+';',
-    'var ss=SpreadsheetApp.openById('+JSON.stringify(sid)+');',
-    'var history=loadVatCardHistory_v660_(ss);',
-    'var master=loadVatCardMaster_v660_(ss);',
-    'var canonical=canonicalizeVatHistory_v664_(history,master);',
     'function T(v){return String(v==null?"":v).trim();}',
-    'function K(v){return T(v).toLowerCase().replace(/[\\s._()\\[\\]{}\\-\\/]/g,"");}',
-    'function N(v){if(typeof v==="number"&&isFinite(v))return v;var n=Number(T(v).replace(/[원,%\\s,]/g,""));return isFinite(n)?n:0;}',
-    'function E4(v){var d=T(v).replace(/\\D/g,"");return d?("0000"+d).slice(-4):"";}',
-    'function props(o,out){out=out||[];if(o==null)return out;if(typeof o!=="object"){out.push({k:"",v:o});return out;}if(Array.isArray(o)){for(var i=0;i<o.length;i++)props(o[i],out);return out;}Object.keys(o).forEach(function(k){var v=o[k];if(v!=null&&typeof v==="object")props(v,out);else out.push({k:k,v:v});});return out;}',
-    'function pick(o,names){var p=props(o,[]), nn=names.map(K);for(var a=0;a<nn.length;a++){for(var i=0;i<p.length;i++){if(K(p[i].k)===nn[a]&&T(p[i].v)!=="")return p[i].v;}}return "";}',
-    'function exactVal(o,val){val=T(val);if(!val)return false;var p=props(o,[]);for(var i=0;i<p.length;i++)if(T(p[i].v)===val)return true;return false;}',
-    'function vals(o){return props(o,[]).map(function(p){return T(p.v);}).filter(Boolean).join(" | ");}',
-    'function cancelLike(o){return /취소|환불|반품|cancel|refund|return/i.test(vals(o));}',
-    'function approvalNo(o){return T(pick(o,["approvalNo","approvalNumber","승인번호"]));}',
-    'function amount(o){return N(pick(o,["approvalAmount","amount","승인금액","이용금액","사용금액","거래금액"]));}',
-    'function end4(o){var v=pick(o,["cardEnd4","end4","cardLast4","카드번호끝4"]);if(T(v))return E4(v);return E4(pick(o,["cardNumber","카드번호"]));}',
-    'function datev(o){return T(pick(o,["approvalDate","date","승인일","승인일자","이용일","거래일","사용일"]));}',
-    'function ckey(o){return T(pick(o,["canonicalEvidenceKey","evidenceKey","canonicalKey"]));}',
-    'function sample(o){if(!o)return "";return [pick(o,["company","cardCompany","카드사"]),pick(o,["cardName","alias","카드명"]),end4(o),datev(o),approvalNo(o),amount(o),ckey(o),pick(o,["sourceFile","source","원본파일"]),pick(o,["cancelMemo","cancel","취소메모"])].map(T).join(" / ").slice(0,900);}',
-    'function day(v){var s=T(v);if(!s)return NaN;var d=new Date(s);if(!isNaN(d.getTime()))return Math.floor(d.getTime()/86400000);var m=s.match(/(20\\d{2})[^0-9]?(\\d{1,2})[^0-9]?(\\d{1,2})/);if(!m)return NaN;return Math.floor(new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).getTime()/86400000);}',
-    'var rows=[];',
-    'targets.forEach(function(t){',
-      'var oldNo=T(t.oldApprovalNo), oldKey=T(t.oldKey), targetEnd=E4(t.newEnd4||t.oldEnd4), orderDay=day(t.date);',
-      'var rawOld=history.filter(function(h){return (oldNo&&approvalNo(h)===oldNo)||(oldKey&&exactVal(h,oldKey));});',
-      'var canOld=canonical.filter(function(c){return (oldNo&&approvalNo(c)===oldNo)||(oldKey&&(ckey(c)===oldKey||exactVal(c,oldKey)));});',
-      'var amtCandidates=canonical.filter(function(c){return Math.round(amount(c))===Math.round(Number(t.newPurchase||0));});',
-      'var endCandidates=amtCandidates.filter(function(c){return !targetEnd||end4(c)===targetEnd;});',
-      'var nearCandidates=endCandidates.filter(function(c){var cd=day(datev(c));return isNaN(orderDay)||isNaN(cd)||Math.abs(cd-orderDay)<=7;});',
-      'var rawCancel=rawOld.filter(cancelLike);',
-      'var sameAmount=Math.round(Number(t.oldApprovalAmount||0))===Math.round(Number(t.newPurchase||0))&&Number(t.oldApprovalAmount||0)!==0;',
-      'var cls="DATA_GAP_REVIEW",why="";',
-      'if(t.transition==="MATCHED -> NO_MATCH"){',
-        'if(rawOld.length>0&&canOld.length===0){if(rawCancel.length>0){cls="EXPLAINED_SAFE";why="기존 승인증빙이 raw에는 있으나 취소/환불성 값과 함께 canonical에서 제외됨";}else{cls="DATA_GAP_REVIEW";why="기존 승인증빙이 raw에는 있으나 canonical 제외 사유가 취소로 설명되지 않음";}}',
-        'else if(canOld.length>0){if(sameAmount||endCandidates.length>0){cls="LIKELY_MATCHER_BUG";why="현재 canonical에 기존/동액 exact 증빙이 살아있는데 신규 결과가 NO_MATCH";}else if(Math.round(Number(t.oldApprovalAmount||0))!==Math.round(Number(t.newPurchase||0))&&endCandidates.length===0){cls="EXPLAINED_SAFE";why="corrected 매입금액이 기존 승인금액과 달라졌고 새 금액 exact canonical 증빙이 없음";}else{cls="DATA_GAP_REVIEW";why="canonical 기존증빙은 있으나 NO_MATCH 전환이 충분히 설명되지 않음";}}',
-        'else{cls="DATA_GAP_REVIEW";why="기존 MATCHED 승인증빙을 현재 raw/canonical에서 찾지 못함";}',
-      '}else if(t.transition==="NO_MATCH -> NON_CARD"){',
-        'var physical=!!(T(t.newApprovalNo)||E4(t.newEnd4)||Number(t.newApprovalAmount||0));',
-        'if(endCandidates.length>0){cls="LIKELY_MATCHER_BUG";why="신규 NON_CARD인데 corrected 금액/카드끝4 exact canonical 카드후보가 존재";}',
-        'else if(physical){cls="INVALID_STATE";why="NON_CARD 상태에 physical card 승인정보가 잔존하며 exact canonical 후보는 없음; 상태/필드 정합성 수정 필요";}',
-        'else{cls="EXPLAINED_SAFE";why="NON_CARD이고 physical card identity 및 exact canonical 후보가 없음";}',
-      '}',
-      'rows.push([t.account,t.order,t.transition,t.date,t.oldPurchase,t.newPurchase,Math.round(Number(t.oldPurchase||0))===Math.round(Number(t.newPurchase||0))?"N":"Y",t.oldApprovalNo,t.oldApprovalAmount,t.oldEnd4,t.newApprovalNo,t.newApprovalAmount,t.newEnd4,t.oldReason,t.newReason,t.oldKey,t.newKey,rawOld.length,rawCancel.length,canOld.length,amtCandidates.length,endCandidates.length,nearCandidates.length,cls,why,sample(endCandidates[0]||canOld[0]||null),rawOld.length?vals(rawOld[0]).slice(0,900):""]);',
+    'function N(v){return T(v).toLowerCase().replace(/[^0-9a-z가-힣]/g,"");}',
+    'function K(a,o){return T(a).toLowerCase()+"|"+N(o);}',
+    'function CP(o){var x={};Object.keys(o||{}).forEach(function(k){x[k]=o[k];});return x;}',
+    'function CU(u){var x={};Object.keys(u||{}).forEach(function(k){x[k]=true;});return x;}',
+    'function ST(r){return T(r&&r.status||"NO_MATCH");}',
+    'function EN(h){var e=typeof enrichHistoryFromMaster_v660_==="function"?enrichHistoryFromMaster_v660_(h,master):h;var num=T(e.cardNumber||h.cardNumber);var end4=typeof normalizeVatCardEnd4_v667_==="function"?normalizeVatCardEnd4_v667_(e.cardEnd4||h.cardEnd4,num):T(e.cardEnd4||h.cardEnd4).replace(/\\D/g,"").slice(-4);return {company:T(e.company||h.company),cardName:T(e.cardName||h.cardName),end4:end4,key:T(h.v664CanonicalKey),date:T(h.date),amount:Number(h.v664EffectiveAmount||h.amount||0),nonCard:!!h.nonCard};}',
+    'var targets={"beliun1023|17100198549471":true,"beliun1023|4101249972829":true,"beliun1024|3101250601802":true,"beliun1024|31100196211237":true};',
+    'var ss=SpreadsheetApp.openById(' + JSON.stringify(sid) + ');',
+    'var vat=ss.getSheetByName("부가세_신고자료"),pv=ss.getSheetByName("ISSUE54_카드매칭전체PREVIEW");',
+    'if(!vat||vat.getLastRow()<2)throw new Error("부가세_신고자료가 없습니다.");',
+    'if(!pv||pv.getLastRow()<2)throw new Error("ISSUE54_카드매칭전체PREVIEW가 없습니다.");',
+    'var orders=groupVatDetailByOrder_v660_(vat.getDataRange().getValues()).filter(function(o){return String(o.year)==="2026"&&String(o.half)==="상반기";});',
+    'orders.sort(function(a,b){return String(a.orderDate||"").localeCompare(String(b.orderDate||""))||String(a.orderNo||"").localeCompare(String(b.orderNo||""))||Number(a.purchase||0)-Number(b.purchase||0);});',
+    'if(orders.length!==1355)throw new Error("current VAT 주문수 불일치: "+orders.length);',
+    'var om={};orders.forEach(function(o){om[K(o.account,o.orderNo)]=o;});',
+    'var hist=loadVatCardHistory_v660_(ss),master=loadVatCardMaster_v660_(ss),canonical=canonicalizeVatHistory_v664_(hist,master);',
+    'if(canonical.length!==1990)throw new Error("canonical 증빙행 불일치: "+canonical.length);',
+    'var vals=pv.getDataRange().getValues(),h=vals[0].map(T),ix={a:h.indexOf("쿠팡계정ID"),o:h.indexOf("주문번호"),p:h.indexOf("주문매입금액"),pay:h.indexOf("롯데결제수단"),st:h.indexOf("카드매칭상태"),ck:h.indexOf("canonicalEvidenceKey")};',
+    'if(ix.a<0||ix.o<0||ix.p<0||ix.pay<0||ix.st<0||ix.ck<0)throw new Error("Issue54 preview 필수헤더 누락");',
+    'if(vals.length-1!==1355)throw new Error("Issue54 preview 주문수 불일치: "+(vals.length-1));',
+    'var counts={MATCHED:0,NON_CARD:0,AMBIGUOUS:0,NO_MATCH:0},psum=0;',
+    'for(var z=1;z<vals.length;z++){var ssx=T(vals[z][ix.st])||"NO_MATCH";counts[ssx]=(counts[ssx]||0)+1;psum+=Number(vals[z][ix.p]||0);}',
+    'if(counts.MATCHED!==808||counts.NON_CARD!==498||counts.AMBIGUOUS!==0||counts.NO_MATCH!==49)throw new Error("Issue54 상태기준 불일치 "+JSON.stringify(counts));',
+    'if(Math.round(psum)!==105762969)throw new Error("Issue54 매입합계 불일치: "+Math.round(psum));',
+    'var previewMap={},used={};',
+    'for(var r=1;r<vals.length;r++){var key=K(vals[r][ix.a],vals[r][ix.o]);var ub=CU(used);previewMap[key]={row:r,oldPayment:T(vals[r][ix.pay]),status:T(vals[r][ix.st]),purchase:Number(vals[r][ix.p]||0),usedBefore:ub};var ckey=T(vals[r][ix.ck]);if(ckey)used[ckey]=true;}',
+    'var rows=[],stats={targets:0,canonicalRows:canonical.length,paymentDifferent:0,currentMatched:0,noPaymentMatched:0,physicalMatched:0,physicalUnusedExists:0},summaries=[];',
+    'Object.keys(targets).sort().forEach(function(tk){',
+      'var o=om[tk],pr=previewMap[tk];if(!o||!pr)throw new Error("대상 주문 누락: "+tk);',
+      'if(pr.status!=="NON_CARD")throw new Error("대상 Issue54 상태가 NON_CARD 아님: "+tk+" / "+pr.status);',
+      'stats.targets++;var oldPay=pr.oldPayment,currentPay=T(o.lottePayment),same=oldPay===currentPay;if(!same)stats.paymentDifferent++;',
+      'var usedBefore=pr.usedBefore;',
+      'function RUN(payment,physicalOnly){var oo=CP(o);oo.lottePayment=payment;var hh=physicalOnly?canonical.filter(function(x){return x&&!x.nonCard;}):canonical;return matchVatOrderCardCanonical_v664_(oo,hh,master,CU(usedBefore))||noMatch_v660_("미실행");}',
+      'var a=RUN(oldPay,false),b=RUN(currentPay,false),c=RUN("",false),d=RUN("",true);',
+      'if(ST(b)==="MATCHED")stats.currentMatched++;if(ST(c)==="MATCHED")stats.noPaymentMatched++;if(ST(d)==="MATCHED")stats.physicalMatched++;',
+      'var physical=[],noncard=[];',
+      'canonical.forEach(function(x){if(!x||x.cancelRow||x.v664FullyCanceled||!x.lotteEvidence)return;var amt=Number(x.v664EffectiveAmount||x.amount||0);if(amt!==Number(o.purchase||0))return;var dd=typeof daysBetween_v664_==="function"?daysBetween_v664_(o.orderDate,x.date):99999;if(dd<0||dd>7)return;var e=EN(x);e.usedBefore=!!usedBefore[e.key];(x.nonCard?noncard:physical).push(e);});',
+      'var pu=physical.filter(function(x){return !x.usedBefore;});var nu=noncard.filter(function(x){return !x.usedBefore;});if(pu.length)stats.physicalUnusedExists++;',
+      'function SUM(arr){return arr.map(function(x){return [x.date,x.amount,x.company,x.cardName,x.end4,x.key,(x.usedBefore?"USED":"FREE")].join("/");}).join(" || ");}',
+      'var cause="UNRESOLVED";',
+      'if(physical.length&&pu.length===0)cause="ALLOCATION_CONFLICT";',
+      'else if(ST(a)==="NON_CARD"&&ST(b)==="MATCHED")cause="OLD_PAYMENT_REUSE_BUG";',
+      'else if(ST(a)==="NON_CARD"&&ST(b)==="NON_CARD"&&ST(d)==="MATCHED")cause=same?"MATCHER_PAYMENT_PRIORITY_BUG":"BOTH_PAYMENT_AND_MATCHER";',
+      'else if(!pu.length&&ST(d)!=="MATCHED")cause="DIAGNOSTIC_FALSE_POSITIVE";',
+      'stats[cause]=(stats[cause]||0)+1;',
+      'rows.push([o.account,o.orderNo,o.orderDate,Number(o.purchase||0),pr.status,oldPay,currentPay,same?"Y":"N",ST(a),ST(b),ST(c),ST(d),T(a.reason),T(b.reason),T(c.reason),T(d.reason),physical.length,pu.length,noncard.length,nu.length,SUM(physical),SUM(noncard),cause]);',
+      'summaries.push(tk+" | old="+oldPay+" | current="+currentPay+" | "+ST(a)+"/"+ST(b)+"/"+ST(c)+"/"+ST(d)+" | physical "+pu.length+"/"+physical.length+" | noncard "+nu.length+"/"+noncard.length+" | "+cause);',
     '});',
-    'return {rows:rows,historyRows:history.length,canonicalRows:canonical.length};',
+    'if(stats.targets!==4)throw new Error("진단대상 불일치: "+stats.targets);',
+    'return {rows:rows,stats:stats,summaries:summaries};',
     '})()'
   ].join('\n');
-  return eval(code+'\n\n;\n\n'+boot+'\n\n;\n\n'+invocation);
+  return eval(code + '\n\n;\n\n' + boot + '\n\n;\n\n' + invocation);
 }
 
-function i57Fetch_(url){
-  var res=UrlFetchApp.fetch(url+'?ts='+new Date().getTime(),{method:'get',muteHttpExceptions:true,followRedirects:true});
-  var code=res.getResponseCode(),txt=res.getContentText('UTF-8');
-  if(code<200||code>=300)throw new Error('main 코드 로드 실패 HTTP '+code+' '+url);
-  return txt;
+function i58Fetch_(url) {
+  var res = UrlFetchApp.fetch(url + '?ts=' + new Date().getTime(), {method:'get',muteHttpExceptions:true,followRedirects:true});
+  var code = res.getResponseCode(), text = res.getContentText('UTF-8');
+  if (code < 200 || code >= 300) throw new Error('원격 코드 로드 실패 HTTP ' + code + ': ' + url + '\n' + text.slice(0,500));
+  return text;
 }
-function i57Find_(h,names){for(var n=0;n<names.length;n++){var q=i57Compact_(names[n]);for(var i=0;i<h.length;i++)if(i57Compact_(h[i])===q)return i;}return -1;}
-function i57Val_(row,ix){return ix>=0?i57Text_(row[ix]):'';}
-function i57Raw_(row,ix){return ix>=0?row[ix]:0;}
-function i57Text_(v){return String(v==null?'':v).trim();}
-function i57Compact_(v){return i57Text_(v).toLowerCase().replace(/[\s._()\[\]{}\-\/]/g,'');}
-function i57Num_(v){if(typeof v==='number'&&isFinite(v))return v;var n=Number(i57Text_(v).replace(/[원,%\s,]/g,''));return isFinite(n)?n:0;}
-function i57End4_(v){var d=i57Text_(v).replace(/\D/g,'');return d?('0000'+d).slice(-4):'';}
-function i57Sig_(v){var h=2166136261;for(var r=0;r<v.length;r++){for(var c=0;c<v[r].length;c++){var s=String(v[r][c]==null?'':v[r][c]);for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h+=(h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24);}h^=31;}}return String(h>>>0)+'|'+v.length+'|'+(v[0]?v[0].length:0);}
-function i57Req_(ok,msg){if(!ok)throw new Error(msg);}
-function i57Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
-function i57Write_(sh,rows){sh.clearContents();sh.getRange(1,1,rows.length,2).setValues(rows);sh.getRange(1,1,1,2).setFontWeight('bold');sh.setFrozenRows(1);SpreadsheetApp.flush();}
+function i58Ensure_(ss,name) { return ss.getSheetByName(name) || ss.insertSheet(name); }
+function i58Write_(sh,rows) { sh.clearContents(); sh.getRange(1,1,rows.length,2).setValues(rows); sh.getRange(1,1,1,2).setFontWeight('bold'); sh.setFrozenRows(1); SpreadsheetApp.flush(); }
+function i58Req_(ok,msg) { if (!ok) throw new Error(msg); }
+function i58Sig_(v) { var h=2166136261; for(var r=0;r<v.length;r++){for(var c=0;c<v[r].length;c++){var s=String(v[r][c]==null?'':v[r][c]);for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h+=(h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24);}h^=31;}}return String(h>>>0)+'|'+v.length+'|'+(v[0]?v[0].length:0); }
