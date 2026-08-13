@@ -27,7 +27,7 @@ deleteCheckedLotteonCleanupSheets_v671_ = function() {
   var count = manager.getLastRow() - 1;
   var results = manager.getRange(2, 9, count, 1).getDisplayValues();
   for (var i = 0; i < results.length; i++) {
-    if (/^삭제 완료\b/.test(String(results[i][0] || '').trim())) {
+    if (/^삭제 완료(?:\s|$)/.test(String(results[i][0] || '').trim())) {
       try { manager.hideRows(i + 2); } catch (ignore) {}
     }
   }
