@@ -1,10 +1,10 @@
 /**
- * Issue #53 v1.0 corrected Apr-Jun VAT production apply.
+ * Issue #53 v1.1 corrected Apr-Jun VAT production apply.
  * Explicitly requires P=`마켓주문상태` and excludes 취소/반품/교환/환불.
  * Rebuilds only `부가세_신고자료`; protects card verification and rolls back on mismatch.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE53-v1.0-20260813',
+  id: 'ISSUE53-v1.1-20260813',
   title: '2026년 4~6월 취소상태 제외 VAT 운영 재생성',
   enabled: true,
   outputSheet: '부가세_신고자료',
@@ -16,7 +16,7 @@ function runLotteonRemoteTaskStartRemote_() {
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
   var status = i53Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
   i53WriteStatus_(status,[
-    ['항목','값'],['버전','v1.0-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','RUNNING'],['단계','PRECHECK'],
+    ['항목','값'],['버전','v1.1-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','RUNNING'],['단계','PRECHECK'],
     ['메시지','취소상태 제외 corrected VAT 운영 재생성 사전검증 시작'],['운영시트 변경','0']
   ]);
 
@@ -36,13 +36,13 @@ function runLotteonRemoteTaskStartRemote_() {
     i53Req_(oldVerify.length-1===1355,'기존 카드검증 주문수 보호 기준 불일치: '+(oldVerify.length-1));
 
     var headers = i53Headers_();
+    wrote = true;
     detail.clearContents();
     detail.getRange(1,1,1,headers.length).setValues([headers]);
     if (built.rows.length) detail.getRange(2,1,built.rows.length,headers.length).setValues(built.rows);
     detail.getRange(1,1,1,headers.length).setFontWeight('bold');
     detail.setFrozenRows(1);
     SpreadsheetApp.flush();
-    wrote = true;
 
     var post = i53ValidateDetail_(detail);
     i53Req_(post.rows===2752,'작성상세행 불일치: '+post.rows);
@@ -59,7 +59,7 @@ function runLotteonRemoteTaskStartRemote_() {
     i53Req_(i53Signature_(verifyAfter)===verifySigBefore,'부가세_카드매칭검증이 변경되었습니다.');
 
     i53WriteStatus_(status,[
-      ['항목','값'],['버전','v1.0-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','PASS'],['단계','DONE'],
+      ['항목','값'],['버전','v1.1-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','PASS'],['단계','DONE'],
       ['메시지','2026년 4~6월 취소상태 제외 VAT 운영 재생성 및 검증 완료'],
       ['운영시트 변경','부가세_신고자료 1개 재작성'],
       ['상태선택열','P / 마켓주문상태'],['취소/반품/교환/환불제외행',built.excludedRows],['취소상태고유주문',built.excludedOrders],
@@ -87,7 +87,7 @@ function runLotteonRemoteTaskStartRemote_() {
       }
     }
     i53WriteStatus_(status,[
-      ['항목','값'],['버전','v1.0-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','ERROR'],['단계','FAILED'],
+      ['항목','값'],['버전','v1.1-ISSUE53-CORRECTED-VAT-PRODUCTION'],['상태','ERROR'],['단계','FAILED'],
       ['메시지','corrected VAT 운영 재생성 실패'],['오류',String(e&&e.message?e.message:e)],
       ['운영시트 변경',wrote?'시도 후 롤백':'0'],['롤백',rollback],['완료시각',new Date().toISOString()]
     ]);
