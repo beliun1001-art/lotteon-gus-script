@@ -1,192 +1,41 @@
-/**
- * Issue #60 v1.1 read-only structure/recovery diagnostic after Issue59 ROLLBACK_ERROR.
- * Never writes production/backup/preview/protected sheets.
- */
-var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE60-v1.1-STRUCTURE-20260813',
-  title: 'Issue59 ROLLBACK_ERROR 운영 카드검증 구조/복구상태 read-only 진단',
-  enabled: true,
-  statusSheet: 'ISSUE60_복구진단상태'
-};
-
-var I60_VERSION = 'v1.1-ISSUE60-STRUCTURE-RECOVERY-DIAGNOSTIC';
-var I60_PROD = '부가세_카드매칭검증';
-var I60_BACKUP = 'ISSUE59_백업_부가세카드매칭검증';
-var I60_PREVIEW = 'ISSUE54_카드매칭전체PREVIEW';
-var I60_VAT = '부가세_신고자료';
-var I60_PERIOD = '부가세_기간별';
-var I60_HISTORY = '카드사용내역_붙여넣기';
-var I60_MASTER = '카드_마스터';
-var I60_DETAIL = 'ISSUE60_복구진단상세';
-
-function runLotteonRemoteTaskStartRemote_() {
-  var ss = SpreadsheetApp.getActive();
-  if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
-  var statusSh = i60Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  i60WriteStatus_(statusSh, 'RUNNING', 'STRUCTURE_CHECK', '운영/백업/preview 구조 read-only 진단 시작', {});
-
-  var names = [I60_PROD,I60_BACKUP,I60_PREVIEW,I60_VAT,I60_PERIOD,I60_HISTORY,I60_MASTER];
-  var src = {};
-  names.forEach(function(name){ src[name] = i60Need_(ss,name); });
-  var before = {};
-  names.forEach(function(name){ before[name]=i60SheetSigDisplay_(src[name]); });
-
-  try {
-    var prod = i60Inspect_(src[I60_PROD]);
-    var backup = i60Inspect_(src[I60_BACKUP]);
-    var preview = i60Inspect_(src[I60_PREVIEW]);
-
-    var oldStats = i60IsOldStats_(prod.stats);
-    var newStats = i60IsNewStats_(prod.stats);
-    var backupOld = i60IsOldStats_(backup.stats);
-    var previewNew = i60IsNewStats_(preview.stats);
-
-    var cb = i60CompareByKey_(prod, backup);
-    var cp = i60CompareByKey_(prod, preview);
-
-    var verdict = 'MIXED_OR_UNKNOWN';
-    if (oldStats && cb.overlap===1355 && cb.onlyLeft===0 && cb.onlyRight===0 && cb.materialDiff===0) verdict='LOGICALLY_OLD_ROLLBACK_OK';
-    else if (newStats && cp.overlap===1355 && cp.onlyLeft===0 && cp.onlyRight===0 && cp.materialDiff===0) verdict='LOGICALLY_NEW_APPLY_PRESENT';
-    else if (oldStats) verdict='OLD_STATS_BUT_CELL_DIFF';
-    else if (newStats) verdict='NEW_STATS_BUT_CELL_DIFF';
-
-    var detail = [];
-    detail.push(['구분','시트','행','열','헤더/필드','display값','typed값','formula']);
-    i60AppendStructure_(detail, prod);
-    i60AppendStructure_(detail, backup);
-    i60AppendStructure_(detail, preview);
-    i60AppendCompare_(detail, 'CURRENT_vs_BACKUP', cb);
-    i60AppendCompare_(detail, 'CURRENT_vs_PREVIEW', cp);
-    var dsh=i60Ensure_(ss,I60_DETAIL);
-    dsh.clearContents();
-    if (detail.length) dsh.getRange(1,1,detail.length,8).setValues(detail);
-    dsh.setFrozenRows(1);
-    dsh.setColumnWidth(1,180);dsh.setColumnWidth(2,240);dsh.setColumnWidth(3,70);dsh.setColumnWidth(4,70);
-    dsh.setColumnWidth(5,230);dsh.setColumnWidth(6,420);dsh.setColumnWidth(7,420);dsh.setColumnWidth(8,320);
-
-    names.forEach(function(name){
-      var after=i60SheetSigDisplay_(src[name]);
-      if (after!==before[name]) throw new Error('보호시트 display signature 변경: '+name);
-    });
-
-    i60WriteStatus_(statusSh,'PASS','DONE','Issue59 rollback 구조/논리 상태 read-only 진단 완료',{
-      verdict:verdict,
-      prod:prod,backup:backup,preview:preview,
-      cb:cb,cp:cp,
-      oldStats:oldStats?'YES':'NO',newStats:newStats?'YES':'NO',
-      backupOld:backupOld?'YES':'NO',previewNew:previewNew?'YES':'NO'
-    });
-    return {ok:true,done:true,verdict:verdict};
-  } catch(e) {
-    var msg=String(e&&e.message?e.message:e);
-    try { i60WriteStatus_(statusSh,'ERROR','FAILED','Issue60 v1.1 read-only 구조진단 실패',{error:msg}); } catch(ignore) {}
-    throw e;
-  }
+var LOTTEON_REMOTE_TASK={id:'ISSUE61-v1.0-20260813',title:'Issue59 백업에서 부가세 카드매칭검증 1,355건 완전 복구',enabled:true,statusSheet:'ISSUE61_복구상태'};
+var I61_VERSION='v1.0-ISSUE61-OLD-CARD-VERIFY-RECOVERY';
+var I61_PROD='부가세_카드매칭검증',I61_BACKUP='ISSUE59_백업_부가세카드매칭검증',I61_PREVIEW='ISSUE54_카드매칭전체PREVIEW',I61_VAT='부가세_신고자료',I61_PERIOD='부가세_기간별',I61_HISTORY='카드사용내역_붙여넣기',I61_MASTER='카드_마스터',I61_I60='ISSUE60_복구진단상태',I61_TEMP='ISSUE61_복구준비';
+function runLotteonRemoteTaskStartRemote_(){
+  var ss=SpreadsheetApp.getActive();if(!ss)throw new Error('현재 스프레드시트를 찾지 못했습니다.');
+  var st=i61Ensure_(ss,LOTTEON_REMOTE_TASK.statusSheet);i61Status_(st,'RUNNING','PRECHECK','정상 백업 기반 운영 복구 사전검증',{});
+  var names=[I61_PROD,I61_BACKUP,I61_PREVIEW,I61_VAT,I61_PERIOD,I61_HISTORY,I61_MASTER,I61_I60];names.forEach(function(n){i61Need_(ss,n);});
+  var before=i61Protected_(ss),backup=i61Need_(ss,I61_BACKUP),prod=i61Need_(ss,I61_PROD),preview=i61Need_(ss,I61_PREVIEW);
+  try{
+    i61ExpectKv_(ss,I61_I60,{'버전':'v1.1-ISSUE60-STRUCTURE-RECOVERY-DIAGNOSTIC','상태':'PASS','판정':'MIXED_OR_UNKNOWN','현재_keyedRows':85,'백업_keyedRows':1355,'백업_old집계일치':'YES','현재/백업_overlap':85,'현재/백업_material행차이':0,'backupOnly':1270,'currentOnly_vs_backup':0});
+    var b=i61Stats_(backup);i61Assert_(b,{orders:1355,matched:810,nonCard:494,ambiguous:1,noMatch:50,purchase:54807644});if(b.dup)throw new Error('백업 주문키 중복 '+b.dup);
+    var p=i61Stats_(preview);i61Assert_(p,{orders:1355,matched:808,nonCard:498,ambiguous:0,noMatch:49,purchase:105762969});
+    var formulas=backup.getDataRange().getFormulas(),fc=0;formulas.forEach(function(r){r.forEach(function(v){if(v)fc++;});});if(fc)throw new Error('백업 수식셀 존재 '+fc);
+    var rows=backup.getLastRow(),cols=backup.getLastColumn(),vals=backup.getRange(1,1,rows,cols).getValues(),fmts=backup.getRange(1,1,rows,cols).getNumberFormats();
+    var old=ss.getSheetByName(I61_TEMP);if(old)ss.deleteSheet(old);var temp=ss.insertSheet(I61_TEMP);i61Grid_(temp,rows,cols);
+    temp.getRange(1,1,rows,cols).setValues(vals);temp.getRange(1,1,rows,cols).setNumberFormats(fmts);SpreadsheetApp.flush();
+    var t=i61Stats_(temp);i61Assert_(t,{orders:1355,matched:810,nonCard:494,ambiguous:1,noMatch:50,purchase:54807644});
+    var td=i61DisplayDiff_(backup,temp);if(td)throw new Error('복구준비/백업 display 차이 '+td);var tm=i61Material_(backup,temp);if(tm.overlap!==1355||tm.diff||tm.leftOnly||tm.rightOnly)throw new Error('복구준비 material 불일치 '+JSON.stringify(tm));
+    i61CheckProtected_(ss,before);i61Status_(st,'RUNNING','WRITE','복구준비 검증 PASS; 기존 운영 1,355건 복구 시작',{oldOrders:b.orders});
+    i61Grid_(prod,rows,cols);var cr=Math.max(prod.getLastRow(),rows),cc=Math.max(prod.getLastColumn(),cols);if(cr&&cc)prod.getRange(1,1,cr,cc).clearContent();
+    for(var off=0;off<rows;off+=150){var n=Math.min(150,rows-off),src=temp.getRange(off+1,1,n,cols),dst=prod.getRange(off+1,1,n,cols);dst.setValues(src.getValues());dst.setNumberFormats(src.getNumberFormats());SpreadsheetApp.flush();var d=i61RangeDisplayDiff_(src,dst);if(d)throw new Error('운영 복구 배치 display 차이 offset='+off+' diff='+d);}
+    prod.setFrozenRows(backup.getFrozenRows());prod.setFrozenColumns(backup.getFrozenColumns());for(var c=1;c<=cols;c++){try{prod.setColumnWidth(c,backup.getColumnWidth(c));}catch(ignore){}}
+    var f=i61Stats_(prod);i61Assert_(f,{orders:1355,matched:810,nonCard:494,ambiguous:1,noMatch:50,purchase:54807644});if(f.dup)throw new Error('복구 운영 주문키 중복 '+f.dup);
+    var md=i61Material_(backup,prod),dd=i61DisplayDiff_(backup,prod);if(md.overlap!==1355||md.diff||md.leftOnly||md.rightOnly)throw new Error('복구 운영 material 불일치 '+JSON.stringify(md));if(dd)throw new Error('복구 운영/백업 display 차이 '+dd);
+    i61CheckProtected_(ss,before);i61Status_(st,'PASS','DONE','Issue59 정상 백업에서 기존 운영 카드검증 1,355건 완전 복구 완료',{orders:f.orders,matched:f.matched,nonCard:f.nonCard,ambiguous:f.ambiguous,noMatch:f.noMatch,purchase:f.purchase,overlap:md.overlap,materialDiff:md.diff,displayDiff:dd});return{ok:true,done:true};
+  }catch(e){var msg=String(e&&e.message?e.message:e);i61Status_(st,'ERROR','FAILED','기존 운영 카드검증 복구 실패',{error:msg});throw e;}
 }
-
-function runLotteonRemoteTaskContinueRemote_(){ return runLotteonRemoteTaskStartRemote_(); }
-
-function i60Inspect_(sheet){
-  var rows=sheet.getLastRow(), cols=sheet.getLastColumn();
-  var vals=rows&&cols?sheet.getRange(1,1,rows,cols).getValues():[];
-  var disp=rows&&cols?sheet.getRange(1,1,rows,cols).getDisplayValues():[];
-  var formulas=rows&&cols?sheet.getRange(1,1,rows,cols).getFormulas():[];
-  var header=i60FindHeaderRow_(disp);
-  var stats=i60StatsFlexible_(sheet,disp,header);
-  return {name:sheet.getName(),rows:rows,cols:cols,values:vals,display:disp,formulas:formulas,header:header,stats:stats};
-}
-
-function i60FindHeaderRow_(disp){
-  var best={row:0,score:-1,headers:[],account:-1,order:-1,status:-1,purchase:-1,v669:-1,v670:-1,canonical:-1};
-  var max=Math.min(disp.length,20);
-  for(var r=0;r<max;r++){
-    var h=(disp[r]||[]).map(i60Text_);
-    var idx={
-      account:i60Find_(h,['쿠팡계정ID']),
-      order:i60Find_(h,['주문번호','마켓주문번호']),
-      status:i60Find_(h,['카드매칭상태']),
-      purchase:i60Find_(h,['주문매입금액','매입금액']),
-      v669:i60Find_(h,['v6.69 2차귀속']),
-      v670:i60Find_(h,['v6.70 3차귀속']),
-      canonical:i60Find_(h,['canonicalEvidenceKey'])
-    };
-    var score=0;
-    if(idx.account>=0)score+=3;if(idx.order>=0)score+=3;if(idx.status>=0)score+=2;if(idx.purchase>=0)score+=2;
-    if(idx.v669>=0)score++;if(idx.v670>=0)score++;if(idx.canonical>=0)score++;
-    if(score>best.score){best={row:r+1,score:score,headers:h,account:idx.account,order:idx.order,status:idx.status,purchase:idx.purchase,v669:idx.v669,v670:idx.v670,canonical:idx.canonical};}
-  }
-  return best;
-}
-
-function i60StatsFlexible_(sheet,disp,header){
-  var st={dataRows:0,keyedRows:0,blankRows:0,partialKeyRows:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,v669:0,v670:0,purchase:0,duplicateKeys:0,keys:{},firstDataRow:0,firstBlankKeyRow:0};
-  if(!header || header.row<1 || header.account<0 || header.order<0) return st;
-  var seen={};
-  for(var r=header.row;r<disp.length;r++){
-    var row=disp[r]||[];
-    var nonempty=false;for(var c=0;c<row.length;c++){if(i60Text_(row[c])){nonempty=true;break;}}
-    if(!nonempty){st.blankRows++;continue;}
-    st.dataRows++;if(!st.firstDataRow)st.firstDataRow=r+1;
-    var a=i60Text_(row[header.account]), o=i60Text_(row[header.order]);
-    if(!a || !o){st.partialKeyRows++;if(!st.firstBlankKeyRow)st.firstBlankKeyRow=r+1;continue;}
-    var k=i60Key_(a,o);st.keyedRows++;if(seen[k])st.duplicateKeys++;seen[k]=true;st.keys[k]=i60Material_(row,header);
-    if(header.status>=0){var s=i60Text_(row[header.status]);if(s==='MATCHED'||s==='MASTER_MATCHED')st.matched++;else if(s==='NON_CARD')st.nonCard++;else if(s==='AMBIGUOUS')st.ambiguous++;else st.noMatch++;}
-    if(header.v669>=0&&i60Text_(row[header.v669])==='Y')st.v669++;
-    if(header.v670>=0&&i60Text_(row[header.v670])==='Y')st.v670++;
-    if(header.purchase>=0)st.purchase+=i60Num_(row[header.purchase]);
-  }
-  return st;
-}
-
-function i60Material_(row,h){
-  var fields=['account','order','status','purchase','v669','v670','canonical'];
-  var out={};fields.forEach(function(f){var ix=h[f];out[f]=ix>=0?i60Text_(row[ix]):'';});
-  return out;
-}
-
-function i60CompareByKey_(left,right){
-  var a=left.stats.keys||{}, b=right.stats.keys||{};var out={overlap:0,onlyLeft:0,onlyRight:0,materialDiff:0,samples:[]};
-  Object.keys(a).forEach(function(k){if(b[k]){out.overlap++;if(i60MaterialSig_(a[k])!==i60MaterialSig_(b[k])){out.materialDiff++;if(out.samples.length<20)out.samples.push({key:k,left:a[k],right:b[k]});}}else out.onlyLeft++;});
-  Object.keys(b).forEach(function(k){if(!a[k])out.onlyRight++;});return out;
-}
-function i60MaterialSig_(x){return [x.status,Math.round(i60Num_(x.purchase)),x.v669,x.v670,x.canonical].join('|');}
-function i60IsOldStats_(s){return s.keyedRows===1355&&s.matched===810&&s.nonCard===494&&s.ambiguous===1&&s.noMatch===50&&Math.round(s.purchase)===54807644;}
-function i60IsNewStats_(s){return s.keyedRows===1355&&s.matched===808&&s.nonCard===498&&s.ambiguous===0&&s.noMatch===49&&s.v669===1161&&s.v670===81&&Math.round(s.purchase)===105762969;}
-
-function i60AppendStructure_(detail,x){
-  detail.push(['META',x.name,0,0,'size',x.rows+'x'+x.cols,'headerRow='+x.header.row+' score='+x.header.score,'']);
-  detail.push(['META',x.name,0,0,'stats','keyed='+x.stats.keyedRows+' partial='+x.stats.partialKeyRows+' data='+x.stats.dataRows,'M='+x.stats.matched+' NC='+x.stats.nonCard+' A='+x.stats.ambiguous+' NM='+x.stats.noMatch+' purchase='+x.stats.purchase,'']);
-  var maxR=Math.min(x.rows,12), maxC=Math.min(x.cols,30);
-  for(var r=0;r<maxR;r++){
-    var nonempty=false;for(var c=0;c<maxC;c++){if(i60Text_(x.display[r][c])){nonempty=true;break;}}
-    if(!nonempty){detail.push(['ROW_SAMPLE',x.name,r+1,0,'(entire row blank)','','','']);continue;}
-    for(var c2=0;c2<maxC;c2++){
-      var dv=i60Text_(x.display[r][c2]), tv=i60Typed_(x.values[r][c2]), fm=i60Text_(x.formulas[r][c2]);
-      if(dv||fm||r+1===x.header.row) detail.push(['CELL_SAMPLE',x.name,r+1,c2+1,(r+1===x.header.row?'HEADER':'')+(x.header.headers[c2]?' '+x.header.headers[c2]:''),dv,tv,fm]);
-    }
-  }
-}
-function i60AppendCompare_(detail,label,cmp){
-  detail.push(['COMPARE',label,0,0,'summary','overlap='+cmp.overlap+' onlyLeft='+cmp.onlyLeft+' onlyRight='+cmp.onlyRight,'materialDiff='+cmp.materialDiff,'']);
-  cmp.samples.forEach(function(s,i){detail.push(['COMPARE_SAMPLE',label,i+1,0,s.key,JSON.stringify(s.left),JSON.stringify(s.right),'']);});
-}
-
-function i60WriteStatus_(sheet,status,stage,message,x){
-  x=x||{};var p=x.prod||{header:{},stats:{}},b=x.backup||{header:{},stats:{}},n=x.preview||{header:{},stats:{}},cb=x.cb||{},cp=x.cp||{};
-  var rows=[['항목','값'],['버전',I60_VERSION],['상태',status],['단계',stage],['메시지',message],['판정',x.verdict||''],
-    ['현재_lastRow',p.rows||0],['현재_lastCol',p.cols||0],['현재_headerRow',(p.header||{}).row||0],['현재_headerScore',(p.header||{}).score||0],['현재_firstDataRow',(p.stats||{}).firstDataRow||0],['현재_firstBlankKeyRow',(p.stats||{}).firstBlankKeyRow||0],['현재_dataRows',(p.stats||{}).dataRows||0],['현재_keyedRows',(p.stats||{}).keyedRows||0],['현재_partialKeyRows',(p.stats||{}).partialKeyRows||0],['현재_MATCHED',(p.stats||{}).matched||0],['현재_NON_CARD',(p.stats||{}).nonCard||0],['현재_AMBIGUOUS',(p.stats||{}).ambiguous||0],['현재_NO_MATCH',(p.stats||{}).noMatch||0],['현재_v6.69',(p.stats||{}).v669||0],['현재_v6.70',(p.stats||{}).v670||0],['현재매입합계',(p.stats||{}).purchase||0],['현재정규화중복',(p.stats||{}).duplicateKeys||0],
-    ['백업_headerRow',(b.header||{}).row||0],['백업_keyedRows',(b.stats||{}).keyedRows||0],['백업_partialKeyRows',(b.stats||{}).partialKeyRows||0],['백업_MATCHED',(b.stats||{}).matched||0],['백업_NON_CARD',(b.stats||{}).nonCard||0],['백업_AMBIGUOUS',(b.stats||{}).ambiguous||0],['백업_NO_MATCH',(b.stats||{}).noMatch||0],['백업매입합계',(b.stats||{}).purchase||0],['백업_old집계일치',x.backupOld||''],
-    ['preview_headerRow',(n.header||{}).row||0],['preview_keyedRows',(n.stats||{}).keyedRows||0],['preview_partialKeyRows',(n.stats||{}).partialKeyRows||0],['preview_MATCHED',(n.stats||{}).matched||0],['preview_NON_CARD',(n.stats||{}).nonCard||0],['preview_AMBIGUOUS',(n.stats||{}).ambiguous||0],['preview_NO_MATCH',(n.stats||{}).noMatch||0],['preview매입합계',(n.stats||{}).purchase||0],['preview_new집계일치',x.previewNew||''],
-    ['현재/백업_overlap',cb.overlap||0],['현재/백업_material행차이',cb.materialDiff||0],['backupOnly',cb.onlyRight||0],['currentOnly_vs_backup',cb.onlyLeft||0],['현재/preview_overlap',cp.overlap||0],['현재/preview_material행차이',cp.materialDiff||0],['previewOnly',cp.onlyRight||0],['currentOnly_vs_preview',cp.onlyLeft||0],['old집계일치',x.oldStats||''],['new집계일치',x.newStats||''],
-    ['부가세_카드매칭검증 변경','0'],['Issue59백업 변경','0'],['Issue54preview 변경','0'],['부가세_신고자료 변경','0'],['부가세_기간별 변경','0'],['카드사용내역_붙여넣기 변경','0'],['카드_마스터 변경','0'],['오류',x.error||''],['완료시각',(status==='PASS'||status==='ERROR')?new Date().toISOString():''],['갱신시각',new Date().toISOString()]];
-  sheet.clearContents();sheet.getRange(1,1,rows.length,2).setValues(rows);sheet.setFrozenRows(1);sheet.setColumnWidth(1,250);sheet.setColumnWidth(2,650);
-}
-
-function i60SheetSigDisplay_(sheet){if(!sheet)return'MISSING';var r=sheet.getLastRow(),c=sheet.getLastColumn();if(!r||!c)return'EMPTY|'+r+'|'+c;var v=sheet.getRange(1,1,r,c).getDisplayValues();var h=2166136261;for(var i=0;i<v.length;i++){for(var j=0;j<v[i].length;j++){var s=i60Text_(v[i][j])+'\u001f';for(var k=0;k<s.length;k++){h^=s.charCodeAt(k);h=Math.imul(h,16777619);}}}return r+'x'+c+'|'+(h>>>0).toString(16);}
-function i60Typed_(v){if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return'DATE:'+v.toISOString();return(typeof v).toUpperCase()+':'+i60Text_(v);}
-function i60Need_(ss,name){var s=ss.getSheetByName(name);if(!s)throw new Error('필수 시트 없음: '+name);return s;}
-function i60Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
-function i60Find_(h,names){for(var i=0;i<names.length;i++){var x=h.indexOf(names[i]);if(x>=0)return x;}return-1;}
-function i60Text_(v){return String(v==null?'':v).trim();}
-function i60Num_(v){var n=Number(i60Text_(v).replace(/[,원\s]/g,''));return isNaN(n)?0:n;}
-function i60Key_(a,o){var aa=i60Text_(a).toLowerCase();var oo=i60Text_(o).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');return aa&&oo?aa+'|'+oo:'';}
+function runLotteonRemoteTaskContinueRemote_(){return runLotteonRemoteTaskStartRemote_();}
+function i61Stats_(sh){var v=sh.getDataRange().getValues(),h=v[0].map(i61Text_),ia=i61Find_(h,['쿠팡계정ID']),io=i61Find_(h,['주문번호']),ip=i61Find_(h,['주문매입금액','매입금액']),is=i61Find_(h,['카드매칭상태']);if(ia<0||io<0||ip<0||is<0)throw new Error(sh.getName()+' 필수 헤더 누락');var o={orders:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,purchase:0,dup:0,keys:{}};for(var r=1;r<v.length;r++){var k=i61Key_(v[r][ia],v[r][io]);if(!k)continue;if(o.keys[k])o.dup++;o.keys[k]=true;o.orders++;o.purchase+=i61Num_(v[r][ip]);var s=i61Text_(v[r][is]);if(s==='MATCHED'||s==='MASTER_MATCHED')o.matched++;else if(s==='NON_CARD')o.nonCard++;else if(s==='AMBIGUOUS')o.ambiguous++;else o.noMatch++;}return o;}
+function i61Material_(a,b){var A=i61Map_(a),B=i61Map_(b),o={overlap:0,diff:0,leftOnly:0,rightOnly:0};Object.keys(A).forEach(function(k){if(B[k]===undefined)o.leftOnly++;else{o.overlap++;if(A[k]!==B[k])o.diff++;}});Object.keys(B).forEach(function(k){if(A[k]===undefined)o.rightOnly++;});return o;}
+function i61Map_(sh){var v=sh.getDataRange().getValues(),h=v[0].map(i61Text_),ia=i61Find_(h,['쿠팡계정ID']),io=i61Find_(h,['주문번호']);if(ia<0||io<0)throw new Error(sh.getName()+' key 헤더 누락');var o={};for(var r=1;r<v.length;r++){var k=i61Key_(v[r][ia],v[r][io]);if(!k)continue;o[k]=v[r].map(i61Cell_).join('\u001f');}return o;}
+function i61Protected_(ss){return{backup:i61Sig_(i61Need_(ss,I61_BACKUP)),preview:i61Sig_(i61Need_(ss,I61_PREVIEW)),vat:i61Sig_(i61Need_(ss,I61_VAT)),period:i61Sig_(i61Need_(ss,I61_PERIOD)),history:i61Sig_(i61Need_(ss,I61_HISTORY)),master:i61Sig_(i61Need_(ss,I61_MASTER))};}
+function i61CheckProtected_(ss,b){var n=i61Protected_(ss);Object.keys(b).forEach(function(k){if(b[k]!==n[k])throw new Error('보호시트 변경 '+k);});}
+function i61Sig_(sh){var v=sh.getDataRange().getValues(),h=2166136261;for(var r=0;r<v.length;r++)for(var c=0;c<v[r].length;c++){var s=i61Cell_(v[r][c])+'\u001f';for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}}return sh.getLastRow()+'x'+sh.getLastColumn()+'|'+(h>>>0).toString(16);}
+function i61Cell_(v){if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return'D:'+v.toISOString();if(typeof v==='number')return'N:'+String(v);if(typeof v==='boolean')return'B:'+String(v);return'T:'+i61Text_(v);}
+function i61DisplayDiff_(a,b){if(a.getLastRow()!==b.getLastRow()||a.getLastColumn()!==b.getLastColumn())return 999999;return i61RangeDisplayDiff_(a.getDataRange(),b.getDataRange());}
+function i61RangeDisplayDiff_(a,b){var A=a.getDisplayValues(),B=b.getDisplayValues(),d=0;if(A.length!==B.length)return 999999;for(var r=0;r<A.length;r++){if(A[r].length!==B[r].length)return 999999;for(var c=0;c<A[r].length;c++)if(String(A[r][c])!==String(B[r][c]))d++;}return d;}
+function i61ExpectKv_(ss,n,e){var sh=i61Need_(ss,n),kv={};sh.getRange(1,1,sh.getLastRow(),Math.min(2,sh.getLastColumn())).getValues().forEach(function(r){var k=i61Text_(r[0]);if(k)kv[k]=r[1];});Object.keys(e).forEach(function(k){var w=e[k],a=kv[k];if(typeof w==='number'){if(Math.round(i61Num_(a))!==w)throw new Error(n+' '+k+' 불일치 '+a);}else if(i61Text_(a)!==String(w))throw new Error(n+' '+k+' 불일치 '+a);});}
+function i61Assert_(a,e){Object.keys(e).forEach(function(k){if(Math.round(Number(a[k]||0))!==Math.round(Number(e[k]||0)))throw new Error(k+' 불일치 실제 '+a[k]+' 기대 '+e[k]);});}
+function i61Status_(sh,status,stage,msg,x){x=x||{};var rows=[['항목','값'],['버전',I61_VERSION],['상태',status],['단계',stage],['메시지',msg],['운영주문',x.orders||0],['MATCHED',x.matched||0],['NON_CARD',x.nonCard||0],['AMBIGUOUS',x.ambiguous||0],['NO_MATCH',x.noMatch||0],['주문매입금액합계',x.purchase||0],['운영/백업_overlap',x.overlap||0],['material행차이',x.materialDiff||0],['display셀차이',x.displayDiff||0],['Issue59백업 변경','0'],['Issue54preview 변경','0'],['부가세_신고자료 변경','0'],['부가세_기간별 변경','0'],['카드사용내역_붙여넣기 변경','0'],['카드_마스터 변경','0'],['오류',x.error||''],['완료시각',(status==='PASS'||status==='ERROR')?new Date().toISOString():''],['갱신시각',new Date().toISOString()]];sh.clearContents();sh.getRange(1,1,rows.length,2).setValues(rows);sh.setFrozenRows(1);sh.getRange(1,1,1,2).setFontWeight('bold');sh.setColumnWidth(1,230);sh.setColumnWidth(2,650);}
+function i61Need_(ss,n){var s=ss.getSheetByName(n);if(!s)throw new Error('필수 시트 없음 '+n);return s;}function i61Ensure_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}function i61Grid_(s,r,c){if(s.getMaxRows()<r)s.insertRowsAfter(s.getMaxRows(),r-s.getMaxRows());if(s.getMaxColumns()<c)s.insertColumnsAfter(s.getMaxColumns(),c-s.getMaxColumns());}function i61Find_(h,n){for(var i=0;i<n.length;i++){var x=h.indexOf(n[i]);if(x>=0)return x;}return-1;}function i61Text_(v){return String(v==null?'':v).trim();}function i61Num_(v){var n=Number(typeof v==='number'?v:i61Text_(v).replace(/[,원\s]/g,''));return isNaN(n)?0:n;}function i61Key_(a,o){a=i61Text_(a).toLowerCase();o=i61Text_(o).toLowerCase().replace(/[^0-9a-z가-힣]/g,'');return a&&o?a+'|'+o:'';}
