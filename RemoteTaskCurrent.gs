@@ -1,309 +1,124 @@
 /**
- * Issue #59 v1.0 guarded production apply.
- * Copies the fully adjudicated Issue54 corrected card-rematch preview to
- * production `부가세_카드매칭검증` only.
- *
- * Safety:
- * - exact pre-apply guards for corrected VAT, old production, Issue54 preview,
- *   and Issue55-58 diagnostic chain
- * - backup before destructive write
- * - write flag set immediately before production clear
- * - full matrix verification after copy
- * - protected-sheet signatures verified unchanged
- * - automatic rollback on any post-write error
+ * Issue #60 v1.0 read-only recovery diagnostic after Issue59 ROLLBACK_ERROR.
+ * Writes only ISSUE60 diagnostic/status sheets.
  */
 var LOTTEON_REMOTE_TASK = {
-  id: 'ISSUE59-v1.0-20260813',
-  title: 'corrected VAT 1,355주문 카드매칭검증 운영 반영',
+  id: 'ISSUE60-v1.0-20260813',
+  title: 'Issue59 ROLLBACK_ERROR 운영 카드검증 복구상태 read-only 진단',
   enabled: true,
-  statusSheet: 'ISSUE59_운영반영상태'
+  statusSheet: 'ISSUE60_복구진단상태'
 };
 
-var I59_VERSION = 'v1.0-ISSUE59-CORRECTED-CARD-VERIFY-PRODUCTION';
-var I59_PREVIEW = 'ISSUE54_카드매칭전체PREVIEW';
-var I59_PREVIEW_STATUS = 'ISSUE54_실행상태';
-var I59_DELTA_STATUS = 'ISSUE55_진단상태';
-var I59_ADJ_STATUS = 'ISSUE56_판정상태';
-var I59_DEEP_STATUS = 'ISSUE57_진단상태';
-var I59_CAUSE_STATUS = 'ISSUE58_진단상태';
-var I59_PROD = '부가세_카드매칭검증';
-var I59_VAT = '부가세_신고자료';
-var I59_PERIOD = '부가세_기간별';
-var I59_HISTORY = '카드사용내역_붙여넣기';
-var I59_MASTER = '카드_마스터';
-var I59_BACKUP = 'ISSUE59_백업_부가세카드매칭검증';
+var I60_VERSION = 'v1.0-ISSUE60-ROLLBACK-STATE-DIAGNOSTIC';
+var I60_PROD = '부가세_카드매칭검증';
+var I60_BACKUP = 'ISSUE59_백업_부가세카드매칭검증';
+var I60_PREVIEW = 'ISSUE54_카드매칭전체PREVIEW';
+var I60_VAT = '부가세_신고자료';
+var I60_PERIOD = '부가세_기간별';
+var I60_HISTORY = '카드사용내역_붙여넣기';
+var I60_MASTER = '카드_마스터';
+var I60_DETAIL = 'ISSUE60_복구진단상세';
 
 function runLotteonRemoteTaskStartRemote_() {
   var ss = SpreadsheetApp.getActive();
   if (!ss) throw new Error('현재 스프레드시트를 찾지 못했습니다.');
+  var statusSh = i60Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
+  i60WriteStatus_(statusSh, 'RUNNING', 'CHECK', 'Issue59 rollback 상태 read-only 진단 시작', {});
 
-  var statusSh = i59Ensure_(ss, LOTTEON_REMOTE_TASK.statusSheet);
-  var prior = i59Kv_(statusSh);
-  if (i59Text_(prior['상태']) === 'PASS') {
-    var prodDone = ss.getSheetByName(I59_PROD);
-    var previewDone = ss.getSheetByName(I59_PREVIEW);
-    if (prodDone && previewDone && i59MatrixEqual_(previewDone, prodDone)) {
-      return {ok:true, done:true, reason:'ALREADY_DONE'};
-    }
-    throw new Error('Issue59 상태는 PASS이나 운영 카드검증이 preview와 다릅니다. 자동 재실행 금지.');
-  }
+  var prod = i60Need_(ss, I60_PROD);
+  var backup = i60Need_(ss, I60_BACKUP);
+  var preview = i60Need_(ss, I60_PREVIEW);
+  var vat = i60Need_(ss, I60_VAT);
+  var period = i60Need_(ss, I60_PERIOD);
+  var history = i60Need_(ss, I60_HISTORY);
+  var master = i60Need_(ss, I60_MASTER);
 
-  i59WriteStatus_(statusSh, 'RUNNING', 'PRECHECK', '운영 반영 사전검증 시작', {
-    operatingChange:'0', rollback:'0'
-  });
-
-  var wrote = false;
-  var oldProdSig = '';
-  var protectedBefore = null;
+  var before = {
+    prod:i60SheetSig_(prod), backup:i60SheetSig_(backup), preview:i60SheetSig_(preview),
+    vat:i60SheetSig_(vat), period:i60SheetSig_(period), history:i60SheetSig_(history), master:i60SheetSig_(master)
+  };
 
   try {
-    var required = [
-      I59_PREVIEW, I59_PREVIEW_STATUS, I59_DELTA_STATUS, I59_ADJ_STATUS,
-      I59_DEEP_STATUS, I59_CAUSE_STATUS, I59_PROD, I59_VAT,
-      I59_PERIOD, I59_HISTORY, I59_MASTER
-    ];
-    required.forEach(function(name) {
-      var sh = ss.getSheetByName(name);
-      if (!sh || sh.getLastRow() < 1) throw new Error('필수 시트 없음: ' + name);
-    });
-
-    var prod = ss.getSheetByName(I59_PROD);
-    var preview = ss.getSheetByName(I59_PREVIEW);
-    var vat = ss.getSheetByName(I59_VAT);
-    var period = ss.getSheetByName(I59_PERIOD);
-    var history = ss.getSheetByName(I59_HISTORY);
-    var master = ss.getSheetByName(I59_MASTER);
-
-    var staleBackup = ss.getSheetByName(I59_BACKUP);
-    if (staleBackup) {
-      var bst = i59DiagStats_(staleBackup);
-      i59AssertDiagStats_('기존 Issue59 백업', bst, {
-        orders:1355, matched:810, nonCard:494, ambiguous:1, noMatch:50, purchase:54807644
-      });
-      i59Restore_(staleBackup, prod);
-      SpreadsheetApp.flush();
-      ss.deleteSheet(staleBackup);
-      prod = ss.getSheetByName(I59_PROD);
-    }
-
-    i59ExpectKv_(ss, I59_PREVIEW_STATUS, {
-      '버전':'v1.1-ISSUE54-CORRECTED-CARD-REMATCH-PREVIEW-REBUILD',
-      '상태':'PASS',
-      '운영시트 변경':'0',
-      '현재VAT주문':1355,
-      'preview주문':1355,
-      'canonical증빙행':1990,
-      'MATCHED':808,
-      'NON_CARD':498,
-      'AMBIGUOUS':0,
-      'NO_MATCH':49,
-      'v6.69 2차귀속':1161,
-      'v6.70 3차귀속':81,
-      '주문매입금액합계':105762969,
-      '잘못된카드identity':0,
-      'fallback증빙필드오류':0,
-      '부가세_카드매칭검증 변경':0
-    });
-    i59ExpectKv_(ss, I59_DELTA_STATUS, {
-      '버전':'v1.0-ISSUE55-CARD-DELTA-DIAGNOSTIC',
-      '상태':'PASS',
-      '운영시트 변경':0,
-      '기존운영주문':1355,
-      'Issue54주문':1355,
-      '정규화overlap':1355,
-      'oldOnly':0,
-      'newOnly':0,
-      '상태변경주문':12,
-      '상태동일주문':1343,
-      '이동_AMBIGUOUS -> MATCHED':1,
-      '이동_MATCHED -> NO_MATCH':5,
-      '이동_NO_MATCH -> MATCHED':2,
-      '이동_NO_MATCH -> NON_CARD':4,
-      '부가세_카드매칭검증 변경':0,
-      '부가세_신고자료 변경':0
-    });
-    i59ExpectKv_(ss, I59_ADJ_STATUS, {
-      '버전':'v1.0-ISSUE56-CHANGED12-EVIDENCE-ADJUDICATION',
-      '상태':'PASS',
-      '운영시트 변경':0,
-      '상태변경주문':12,
-      'AUTO_SAFE':3,
-      'REVIEW_REQUIRED':5,
-      'INVALID':4,
-      '신규MATCHED_AUTO_SAFE':3,
-      '운영반영자동승인':'NO',
-      '부가세_카드매칭검증 변경':0,
-      '부가세_신고자료 변경':0
-    });
-    i59ExpectKv_(ss, I59_DEEP_STATUS, {
-      '버전':'v1.0-ISSUE57-BLOCKED9-DEEP-DIAGNOSTIC',
-      '상태':'PASS',
-      '운영시트 변경':0,
-      '진단대상':9,
-      'EXPLAINED_SAFE':5,
-      'LIKELY_MATCHER_BUG':4,
-      'DATA_GAP_REVIEW':0,
-      'INVALID_STATE':0,
-      '부가세_카드매칭검증 변경':0,
-      '부가세_신고자료 변경':0,
-      '카드사용내역_붙여넣기 변경':0,
-      '카드_마스터 변경':0
-    });
-    i59ExpectKv_(ss, I59_CAUSE_STATUS, {
-      '버전':'v1.0-ISSUE58-PAYMENT-SOURCE-CAUSE-SPLIT',
-      '상태':'PASS',
-      '운영시트 변경':0,
-      '진단대상':4,
-      'DIAGNOSTIC_FALSE_POSITIVE':4,
-      'UNRESOLVED':0,
-      'OLD_PAYMENT_REUSE_BUG':0,
-      'MATCHER_PAYMENT_PRIORITY_BUG':0,
-      'BOTH_PAYMENT_AND_MATCHER':0,
-      'ALLOCATION_CONFLICT':0,
-      'CURRENT_VAT에서MATCHED':0,
-      'NO_PAYMENT에서MATCHED':0,
-      'PHYSICAL_ONLY에서MATCHED':0,
-      'exactPhysical미사용후보존재':0,
-      '부가세_카드매칭검증 변경':0,
-      '부가세_신고자료 변경':0,
-      '카드사용내역_붙여넣기 변경':0,
-      '카드_마스터 변경':0
-    });
-
-    var vatStats = i59VatStats_(vat);
-    if (vatStats.detailRows !== 2752) throw new Error('corrected VAT 상세행 불일치: ' + vatStats.detailRows);
-    if (vatStats.orders !== 1355) throw new Error('corrected VAT 주문수 불일치: ' + vatStats.orders);
-    if (Math.round(vatStats.purchase) !== 105762969) throw new Error('corrected VAT 매입합계 불일치: ' + vatStats.purchase);
-    if (vatStats.unmappedBusiness !== 0) throw new Error('corrected VAT 사업자등록번호 미매핑: ' + vatStats.unmappedBusiness);
-
-    var oldStats = i59DiagStats_(prod);
-    i59AssertDiagStats_('기존 운영 카드검증', oldStats, {
+    var oldStats = i60DiagStats_(backup);
+    i60AssertStats_('Issue59 backup', oldStats, {
       orders:1355, matched:810, nonCard:494, ambiguous:1, noMatch:50, purchase:54807644
     });
-
-    var newStats = i59DiagStats_(preview);
-    i59AssertDiagStats_('Issue54 preview', newStats, {
-      orders:1355, matched:808, nonCard:498, ambiguous:0, noMatch:49,
-      v669:1161, v670:81, purchase:105762969
+    var newStats = i60DiagStats_(preview);
+    i60AssertStats_('Issue54 preview', newStats, {
+      orders:1355, matched:808, nonCard:498, ambiguous:0, noMatch:49, v669:1161, v670:81, purchase:105762969
     });
-    if (newStats.duplicateKeys !== 0) throw new Error('Issue54 정규화 주문키 중복: ' + newStats.duplicateKeys);
-    if (newStats.duplicateCanonicalMatched !== 0) {
-      throw new Error('Issue54 MATCHED canonical key 중복: ' + newStats.duplicateCanonicalMatched);
-    }
-    if (oldStats.duplicateKeys !== 0) throw new Error('기존 운영 정규화 주문키 중복: ' + oldStats.duplicateKeys);
-    var overlap = i59Overlap_(oldStats.keys, newStats.keys);
-    if (overlap !== 1355) throw new Error('기존 운영/Issue54 정규화 overlap 불일치: ' + overlap);
+    var curStats = i60DiagStats_(prod);
 
-    oldProdSig = i59SheetSig_(prod);
-    protectedBefore = {
-      vat:i59SheetSig_(vat),
-      period:i59SheetSig_(period),
-      history:i59SheetSig_(history),
-      master:i59SheetSig_(master),
-      preview:i59SheetSig_(preview),
-      issue55:i59SheetSig_(ss.getSheetByName(I59_DELTA_STATUS)),
-      issue56:i59SheetSig_(ss.getSheetByName(I59_ADJ_STATUS)),
-      issue57:i59SheetSig_(ss.getSheetByName(I59_DEEP_STATUS)),
-      issue58:i59SheetSig_(ss.getSheetByName(I59_CAUSE_STATUS))
+    var strictOld = i60CompareCells_(backup, prod, 'BACKUP_vs_CURRENT', 40);
+    var strictNew = i60CompareCells_(preview, prod, 'PREVIEW_vs_CURRENT', 40);
+    var logicalOld = i60CompareLogical_(backup, prod, 'BACKUP_vs_CURRENT', 40);
+    var logicalNew = i60CompareLogical_(preview, prod, 'PREVIEW_vs_CURRENT', 40);
+
+    var oldStatsMatch = i60StatsMatch_(curStats, {
+      orders:1355, matched:810, nonCard:494, ambiguous:1, noMatch:50, purchase:54807644
+    });
+    var newStatsMatch = i60StatsMatch_(curStats, {
+      orders:1355, matched:808, nonCard:498, ambiguous:0, noMatch:49, v669:1161, v670:81, purchase:105762969
+    });
+
+    var classification = 'MIXED_OR_UNKNOWN';
+    if (logicalOld.mismatchRows === 0 && logicalOld.oldOnly === 0 && logicalOld.newOnly === 0) {
+      classification = 'LOGICALLY_OLD_ROLLBACK_OK';
+    } else if (logicalNew.mismatchRows === 0 && logicalNew.oldOnly === 0 && logicalNew.newOnly === 0) {
+      classification = 'LOGICALLY_NEW_APPLY_PRESENT';
+    } else if (oldStatsMatch) {
+      classification = 'OLD_STATS_BUT_CELL_DIFF';
+    } else if (newStatsMatch) {
+      classification = 'NEW_STATS_BUT_CELL_DIFF';
+    }
+
+    var details = [];
+    details.push(['구분','비교','행','열','헤더','왼쪽 strict','오른쪽 strict','왼쪽 표시','오른쪽 표시','주문키','비고']);
+    strictOld.samples.forEach(function(x){ details.push(i60DetailRow_(x)); });
+    strictNew.samples.forEach(function(x){ details.push(i60DetailRow_(x)); });
+    logicalOld.samples.forEach(function(x){ details.push(i60LogicalDetailRow_(x)); });
+    logicalNew.samples.forEach(function(x){ details.push(i60LogicalDetailRow_(x)); });
+    i60WriteDetail_(ss, details);
+
+    var after = {
+      prod:i60SheetSig_(prod), backup:i60SheetSig_(backup), preview:i60SheetSig_(preview),
+      vat:i60SheetSig_(vat), period:i60SheetSig_(period), history:i60SheetSig_(history), master:i60SheetSig_(master)
     };
-
-    i59WriteStatus_(statusSh, 'RUNNING', 'BACKUP', '사전검증 PASS; 운영 카드검증 백업 생성', {
-      operatingChange:'0', rollback:'0',
-      oldMatched:oldStats.matched, oldNonCard:oldStats.nonCard,
-      oldAmbiguous:oldStats.ambiguous, oldNoMatch:oldStats.noMatch,
-      oldPurchase:oldStats.purchase
+    Object.keys(before).forEach(function(k){
+      if (before[k] !== after[k]) throw new Error('보호시트 signature 변경: ' + k);
     });
 
-    var backup = prod.copyTo(ss).setName(I59_BACKUP);
-    SpreadsheetApp.flush();
-    if (i59SheetSig_(backup) !== oldProdSig) throw new Error('운영 카드검증 백업 signature 불일치');
-
-    wrote = true;
-    i59WriteStatus_(statusSh, 'RUNNING', 'WRITE', '백업 PASS; corrected 카드검증 운영 반영 시작', {
-      operatingChange:'WRITE_IN_PROGRESS', rollback:'0'
+    i60WriteStatus_(statusSh, 'PASS', 'DONE', 'Issue59 rollback 상태 read-only 진단 완료', {
+      classification:classification,
+      currentOrders:curStats.orders,
+      currentMatched:curStats.matched,
+      currentNonCard:curStats.nonCard,
+      currentAmbiguous:curStats.ambiguous,
+      currentNoMatch:curStats.noMatch,
+      currentV669:curStats.v669,
+      currentV670:curStats.v670,
+      currentPurchase:curStats.purchase,
+      currentDup:curStats.duplicateKeys,
+      overlapBackup:i60Overlap_(curStats.keys, oldStats.keys),
+      overlapPreview:i60Overlap_(curStats.keys, newStats.keys),
+      strictOld:strictOld.strictMismatch,
+      displayOld:strictOld.displayMismatch,
+      strictNew:strictNew.strictMismatch,
+      displayNew:strictNew.displayMismatch,
+      logicalOld:logicalOld.mismatchRows,
+      logicalNew:logicalNew.mismatchRows,
+      oldOnlyBackup:logicalOld.oldOnly,
+      currentOnlyBackup:logicalOld.newOnly,
+      oldOnlyPreview:logicalNew.oldOnly,
+      currentOnlyPreview:logicalNew.newOnly,
+      oldStatsMatch:oldStatsMatch ? 'YES':'NO',
+      newStatsMatch:newStatsMatch ? 'YES':'NO',
+      prodChange:'0', backupChange:'0', previewChange:'0', vatChange:'0', periodChange:'0', historyChange:'0', masterChange:'0'
     });
-
-    i59CopySheetMatrix_(preview, prod);
-    SpreadsheetApp.flush();
-
-    if (!i59MatrixEqual_(preview, prod)) throw new Error('운영 카드검증과 Issue54 preview 전 셀 비교 불일치');
-
-    var finalStats = i59DiagStats_(prod);
-    i59AssertDiagStats_('최종 운영 카드검증', finalStats, {
-      orders:1355, matched:808, nonCard:498, ambiguous:0, noMatch:49,
-      v669:1161, v670:81, purchase:105762969
-    });
-    if (finalStats.duplicateKeys !== 0) throw new Error('최종 운영 정규화 주문키 중복: ' + finalStats.duplicateKeys);
-    if (finalStats.duplicateCanonicalMatched !== 0) {
-      throw new Error('최종 운영 MATCHED canonical key 중복: ' + finalStats.duplicateCanonicalMatched);
-    }
-    if (i59Overlap_(finalStats.keys, newStats.keys) !== 1355) throw new Error('최종 운영/preview 주문 overlap 불일치');
-
-    i59AssertProtected_(ss, protectedBefore);
-
-    i59WriteStatus_(statusSh, 'PASS', 'DONE', 'corrected VAT 카드매칭검증 운영 반영 및 검증 완료', {
-      operatingChange:'부가세_카드매칭검증 1개 재작성',
-      backup:I59_BACKUP,
-      rollback:'0',
-      orders:finalStats.orders,
-      matched:finalStats.matched,
-      nonCard:finalStats.nonCard,
-      ambiguous:finalStats.ambiguous,
-      noMatch:finalStats.noMatch,
-      v669:finalStats.v669,
-      v670:finalStats.v670,
-      purchase:finalStats.purchase,
-      overlap:1355,
-      changedOrders:12,
-      vatChange:'0',
-      periodChange:'0',
-      historyChange:'0',
-      masterChange:'0'
-    });
-    return {ok:true, done:true, status:'PASS', stats:finalStats};
+    return {ok:true, done:true, classification:classification};
   } catch (e) {
     var msg = String(e && e.message ? e.message : e);
-    if (wrote) {
-      try {
-        var prodRb = ss.getSheetByName(I59_PROD);
-        var backupRb = ss.getSheetByName(I59_BACKUP);
-        if (!prodRb || !backupRb) throw new Error('롤백 대상/백업 시트 없음');
-        i59Restore_(backupRb, prodRb);
-        SpreadsheetApp.flush();
-        var rbSig = i59SheetSig_(prodRb);
-        if (oldProdSig && rbSig !== oldProdSig) throw new Error('롤백 후 운영 signature 불일치');
-        var rbStats = i59DiagStats_(prodRb);
-        i59AssertDiagStats_('롤백 운영 카드검증', rbStats, {
-          orders:1355, matched:810, nonCard:494, ambiguous:1, noMatch:50, purchase:54807644
-        });
-        if (protectedBefore) i59AssertProtected_(ss, protectedBefore);
-        i59WriteStatus_(statusSh, 'ROLLED_BACK', 'DONE', '운영 반영 오류로 자동 롤백 완료', {
-          operatingChange:'0 (자동 롤백)',
-          backup:I59_BACKUP,
-          rollback:'1',
-          error:msg,
-          oldMatched:rbStats.matched,
-          oldNonCard:rbStats.nonCard,
-          oldAmbiguous:rbStats.ambiguous,
-          oldNoMatch:rbStats.noMatch,
-          oldPurchase:rbStats.purchase
-        });
-        return {ok:false, done:true, status:'ROLLED_BACK', error:msg};
-      } catch (rb) {
-        var rbMsg = String(rb && rb.message ? rb.message : rb);
-        i59WriteStatus_(statusSh, 'ROLLBACK_ERROR', 'FAILED', '운영 반영 실패 후 자동 롤백도 실패', {
-          operatingChange:'UNKNOWN',
-          backup:I59_BACKUP,
-          rollback:'ERROR',
-          error:msg + ' / ROLLBACK: ' + rbMsg
-        });
-        throw new Error(msg + ' / ROLLBACK_ERROR: ' + rbMsg);
-      }
-    }
-
-    i59WriteStatus_(statusSh, 'ERROR', 'FAILED', '운영 반영 전 사전검증 실패', {
-      operatingChange:'0', rollback:'0', error:msg
-    });
+    i60WriteStatus_(statusSh, 'ERROR', 'FAILED', 'Issue60 read-only 진단 실패', {error:msg});
     throw e;
   }
 }
@@ -312,240 +127,207 @@ function runLotteonRemoteTaskContinueRemote_() {
   return runLotteonRemoteTaskStartRemote_();
 }
 
-function i59VatStats_(sheet) {
-  var v = sheet.getDataRange().getValues();
-  if (v.length < 2) throw new Error('부가세_신고자료가 비어 있습니다.');
-  var h = v[0].map(i59Text_);
-  var account = i59Find_(h, ['쿠팡계정ID']);
-  var order = i59Find_(h, ['주문번호','마켓주문번호']);
-  var purchase = i59Find_(h, ['매입금액']);
-  var business = i59Find_(h, ['사업자등록번호']);
-  if (account < 0 || order < 0 || purchase < 0 || business < 0) throw new Error('부가세_신고자료 필수 헤더 누락');
-  var keys = {}, sum = 0, unmapped = 0;
-  for (var r=1;r<v.length;r++) {
-    var k = i59Key_(v[r][account], v[r][order]);
-    if (!k) throw new Error('부가세_신고자료 주문키 공란 R' + (r+1));
-    keys[k] = true;
-    sum += i59Num_(v[r][purchase]);
-    if (!i59Text_(v[r][business])) unmapped++;
-  }
-  return {detailRows:v.length-1, orders:Object.keys(keys).length, purchase:sum, unmappedBusiness:unmapped};
+function i60Need_(ss, name) {
+  var sh = ss.getSheetByName(name);
+  if (!sh || sh.getLastRow() < 1) throw new Error('필수 시트 없음: ' + name);
+  return sh;
 }
 
-function i59DiagStats_(sheet) {
+function i60DiagStats_(sheet) {
   var v = sheet.getDataRange().getValues();
   if (v.length < 2) throw new Error(sheet.getName() + ' 데이터가 없습니다.');
-  var h = v[0].map(i59Text_);
+  var h = v[0].map(i60Text_);
   var ix = {
-    account:i59Find_(h,['쿠팡계정ID']),
-    order:i59Find_(h,['주문번호']),
-    purchase:i59Find_(h,['주문매입금액','매입금액']),
-    status:i59Find_(h,['카드매칭상태']),
-    v669:i59Find_(h,['v6.69 2차귀속']),
-    v670:i59Find_(h,['v6.70 3차귀속']),
-    canonical:i59Find_(h,['canonicalEvidenceKey'])
+    account:i60Find_(h,['쿠팡계정ID','계정ID','마켓아이디']),
+    order:i60Find_(h,['주문번호','마켓주문번호']),
+    purchase:i60Find_(h,['주문매입금액','매입금액']),
+    status:i60Find_(h,['카드매칭상태','매칭상태']),
+    v669:i60Find_(h,['v6.69 2차귀속']),
+    v670:i60Find_(h,['v6.70 3차귀속'])
   };
-  if (ix.account<0 || ix.order<0 || ix.purchase<0 || ix.status<0) {
-    throw new Error(sheet.getName() + ' 카드검증 필수 헤더 누락');
-  }
-  var st={orders:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,v669:0,v670:0,purchase:0,
-    duplicateKeys:0,duplicateCanonicalMatched:0,keys:{}};
-  var canonicalOwners={};
+  if (ix.account<0 || ix.order<0 || ix.purchase<0 || ix.status<0) throw new Error(sheet.getName() + ' 필수 헤더 누락');
+  var st={orders:0,matched:0,nonCard:0,ambiguous:0,noMatch:0,v669:0,v670:0,purchase:0,duplicateKeys:0,keys:{}};
   for (var r=1;r<v.length;r++) {
-    var row=v[r], key=i59Key_(row[ix.account],row[ix.order]);
+    var key=i60Key_(v[r][ix.account],v[r][ix.order]);
     if (!key) throw new Error(sheet.getName() + ' 주문키 공란 R' + (r+1));
     if (st.keys[key]) st.duplicateKeys++;
     st.keys[key]=true;
     st.orders++;
-    var s=i59Text_(row[ix.status]);
-    if (s==='MATCHED' || s==='MASTER_MATCHED') st.matched++;
+    var s=i60Status_(v[r][ix.status]);
+    if (s==='MATCHED') st.matched++;
     else if (s==='NON_CARD') st.nonCard++;
     else if (s==='AMBIGUOUS') st.ambiguous++;
     else st.noMatch++;
-    if (ix.v669>=0 && i59Text_(row[ix.v669])==='Y') st.v669++;
-    if (ix.v670>=0 && i59Text_(row[ix.v670])==='Y') st.v670++;
-    st.purchase += i59Num_(row[ix.purchase]);
-    if ((s==='MATCHED' || s==='MASTER_MATCHED') && ix.canonical>=0) {
-      var ck=i59Text_(row[ix.canonical]);
-      if (ck) {
-        canonicalOwners[ck]=(canonicalOwners[ck]||0)+1;
-        if (canonicalOwners[ck]===2) st.duplicateCanonicalMatched++;
-      }
-    }
+    if (ix.v669>=0 && i60Text_(v[r][ix.v669])==='Y') st.v669++;
+    if (ix.v670>=0 && i60Text_(v[r][ix.v670])==='Y') st.v670++;
+    st.purchase += i60Num_(v[r][ix.purchase]);
   }
   return st;
 }
 
-function i59AssertDiagStats_(label, actual, expected) {
-  Object.keys(expected).forEach(function(k) {
-    var a = Number(actual[k] || 0), w = Number(expected[k] || 0);
-    if (Math.round(a) !== Math.round(w)) {
-      throw new Error(label + ' ' + k + ' 불일치: 실제 ' + a + ' / 기대 ' + w);
+function i60AssertStats_(label, a, e) {
+  Object.keys(e).forEach(function(k){
+    if (Math.round(Number(a[k]||0)) !== Math.round(Number(e[k]||0))) {
+      throw new Error(label + ' ' + k + ' 불일치: ' + a[k] + ' / 기대 ' + e[k]);
     }
   });
 }
-
-function i59Overlap_(a, b) {
-  var n=0;
-  Object.keys(a || {}).forEach(function(k){ if (b && b[k]) n++; });
-  return n;
+function i60StatsMatch_(a,e) {
+  return Object.keys(e).every(function(k){return Math.round(Number(a[k]||0))===Math.round(Number(e[k]||0));});
 }
 
-function i59ExpectKv_(ss, sheetName, expected) {
-  var sh=ss.getSheetByName(sheetName);
-  if (!sh) throw new Error('상태 시트 없음: '+sheetName);
-  var kv=i59Kv_(sh);
-  Object.keys(expected).forEach(function(key){
-    var want=expected[key], actual=kv[key];
-    if (typeof want==='number') {
-      if (Math.round(i59Num_(actual))!==want) throw new Error(sheetName+' '+key+' 불일치: '+actual+' / 기대 '+want);
-    } else if (i59Text_(actual)!==String(want)) {
-      throw new Error(sheetName+' '+key+' 불일치: '+actual+' / 기대 '+want);
+function i60CompareCells_(left, right, label, sampleLimit) {
+  var lr=left.getLastRow(), lc=left.getLastColumn(), rr=right.getLastRow(), rc=right.getLastColumn();
+  var rows=Math.max(lr,rr), cols=Math.max(lc,rc);
+  var lv=lr&&lc?left.getRange(1,1,lr,lc).getValues():[];
+  var rv=rr&&rc?right.getRange(1,1,rr,rc).getValues():[];
+  var ld=lr&&lc?left.getRange(1,1,lr,lc).getDisplayValues():[];
+  var rd=rr&&rc?right.getRange(1,1,rr,rc).getDisplayValues():[];
+  var headers=[];
+  for(var c=0;c<cols;c++) headers[c]=i60Text_((lv[0]||[])[c] || (rv[0]||[])[c]);
+  var strict=0, display=0, samples=[];
+  for(var r=0;r<rows;r++) for(var c=0;c<cols;c++) {
+    var l = (r<lr && c<lc) ? lv[r][c] : '__MISSING_CELL__';
+    var q = (r<rr && c<rc) ? rv[r][c] : '__MISSING_CELL__';
+    var ls = (r<lr && c<lc) ? ld[r][c] : '__MISSING_CELL__';
+    var rs = (r<rr && c<rc) ? rd[r][c] : '__MISSING_CELL__';
+    var stDiff = i60Strict_(l)!==i60Strict_(q);
+    var dsDiff = String(ls)!==String(rs);
+    if (stDiff) strict++;
+    if (dsDiff) display++;
+    if ((stDiff || dsDiff) && samples.length<sampleLimit) {
+      samples.push({kind:'CELL',label:label,row:r+1,col:c+1,header:headers[c]||'',leftStrict:i60Strict_(l),rightStrict:i60Strict_(q),leftDisplay:String(ls),rightDisplay:String(rs),key:'',note:(stDiff?'STRICT ':'')+(dsDiff?'DISPLAY':'')});
     }
-  });
-}
-
-function i59Kv_(sheet) {
-  var out={};
-  if (!sheet || sheet.getLastRow()<1) return out;
-  var vals=sheet.getRange(1,1,sheet.getLastRow(),Math.min(2,sheet.getLastColumn())).getValues();
-  vals.forEach(function(r){var k=i59Text_(r[0]); if(k)out[k]=r[1];});
-  return out;
-}
-
-function i59AssertProtected_(ss, before) {
-  var now = {
-    vat:i59SheetSig_(ss.getSheetByName(I59_VAT)),
-    period:i59SheetSig_(ss.getSheetByName(I59_PERIOD)),
-    history:i59SheetSig_(ss.getSheetByName(I59_HISTORY)),
-    master:i59SheetSig_(ss.getSheetByName(I59_MASTER)),
-    preview:i59SheetSig_(ss.getSheetByName(I59_PREVIEW)),
-    issue55:i59SheetSig_(ss.getSheetByName(I59_DELTA_STATUS)),
-    issue56:i59SheetSig_(ss.getSheetByName(I59_ADJ_STATUS)),
-    issue57:i59SheetSig_(ss.getSheetByName(I59_DEEP_STATUS)),
-    issue58:i59SheetSig_(ss.getSheetByName(I59_CAUSE_STATUS))
-  };
-  Object.keys(before || {}).forEach(function(k){
-    if (before[k] !== now[k]) throw new Error('보호시트 signature 변경: '+k);
-  });
-}
-
-function i59CopySheetMatrix_(src, dst) {
-  var rows=src.getLastRow(), cols=src.getLastColumn();
-  if (rows<1 || cols<1) throw new Error('복사 원본이 비어 있습니다: '+src.getName());
-  i59EnsureGrid_(dst, rows, cols);
-  var clearRows=Math.max(dst.getLastRow(),rows);
-  var clearCols=Math.max(dst.getLastColumn(),cols);
-  if (clearRows>0 && clearCols>0) dst.getRange(1,1,clearRows,clearCols).clear();
-  src.getRange(1,1,rows,cols).copyTo(dst.getRange(1,1,rows,cols), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
-  dst.setFrozenRows(src.getFrozenRows());
-  dst.setFrozenColumns(src.getFrozenColumns());
-  for(var c=1;c<=cols;c++) {
-    try { dst.setColumnWidth(c,src.getColumnWidth(c)); } catch(ignore) {}
   }
+  return {strictMismatch:strict,displayMismatch:display,samples:samples,leftRows:lr,leftCols:lc,rightRows:rr,rightCols:rc};
 }
 
-function i59Restore_(backup, prod) {
-  i59CopySheetMatrix_(backup, prod);
-}
-
-function i59EnsureGrid_(sheet, rows, cols) {
-  if (sheet.getMaxRows()<rows) sheet.insertRowsAfter(sheet.getMaxRows(),rows-sheet.getMaxRows());
-  if (sheet.getMaxColumns()<cols) sheet.insertColumnsAfter(sheet.getMaxColumns(),cols-sheet.getMaxColumns());
-}
-
-function i59MatrixEqual_(a, b) {
-  if (!a || !b) return false;
-  var ar=a.getLastRow(), ac=a.getLastColumn(), br=b.getLastRow(), bc=b.getLastColumn();
-  if (ar!==br || ac!==bc) return false;
-  var av=a.getRange(1,1,ar,ac).getValues();
-  var bv=b.getRange(1,1,br,bc).getValues();
-  for(var r=0;r<ar;r++) for(var c=0;c<ac;c++) {
-    if (i59Cell_(av[r][c])!==i59Cell_(bv[r][c])) return false;
-  }
-  return true;
-}
-
-function i59SheetSig_(sheet) {
-  if (!sheet) return 'MISSING';
-  var rows=sheet.getLastRow(), cols=sheet.getLastColumn();
-  if (!rows || !cols) return 'EMPTY|'+rows+'|'+cols;
-  var vals=sheet.getRange(1,1,rows,cols).getValues();
-  var h1=2166136261, h2=0;
-  for(var r=0;r<vals.length;r++) {
-    for(var c=0;c<vals[r].length;c++) {
-      var s=i59Cell_(vals[r][c])+'\u001f';
-      for(var i=0;i<s.length;i++) {
-        h1 ^= s.charCodeAt(i);
-        h1 = Math.imul(h1,16777619);
-        h2 = (Math.imul(h2,31)+s.charCodeAt(i))|0;
+function i60CompareLogical_(left, right, label, sampleLimit) {
+  var a=i60LogicalMap_(left), b=i60LogicalMap_(right);
+  var mismatch=0, oldOnly=0, newOnly=0, samples=[];
+  Object.keys(a.map).forEach(function(k){
+    if (!b.map[k]) {
+      oldOnly++;
+      if(samples.length<sampleLimit)samples.push({kind:'LOGICAL',label:label,key:k,header:'',leftStrict:'ROW_PRESENT',rightStrict:'ROW_MISSING',leftDisplay:'',rightDisplay:'',note:'LEFT_ONLY'});
+      return;
+    }
+    if (a.map[k].fingerprint!==b.map[k].fingerprint) {
+      mismatch++;
+      if(samples.length<sampleLimit){
+        var d=i60FirstFieldDiff_(a.map[k],b.map[k]);
+        samples.push({kind:'LOGICAL',label:label,key:k,header:d.header,leftStrict:d.left,rightStrict:d.right,leftDisplay:'',rightDisplay:'',note:'MATERIAL_FIELD_DIFF'});
       }
     }
-    h2=(Math.imul(h2,131)+13)|0;
+  });
+  Object.keys(b.map).forEach(function(k){
+    if(!a.map[k]){
+      newOnly++;
+      if(samples.length<sampleLimit)samples.push({kind:'LOGICAL',label:label,key:k,header:'',leftStrict:'ROW_MISSING',rightStrict:'ROW_PRESENT',leftDisplay:'',rightDisplay:'',note:'RIGHT_ONLY'});
+    }
+  });
+  return {mismatchRows:mismatch,oldOnly:oldOnly,newOnly:newOnly,samples:samples};
+}
+
+function i60LogicalMap_(sheet) {
+  var v=sheet.getDataRange().getValues();
+  var h=v[0].map(i60Text_);
+  var account=i60Find_(h,['쿠팡계정ID','계정ID','마켓아이디']);
+  var order=i60Find_(h,['주문번호','마켓주문번호']);
+  if(account<0||order<0) throw new Error(sheet.getName()+' 주문키 헤더 누락');
+  var map={};
+  for(var r=1;r<v.length;r++){
+    var key=i60Key_(v[r][account],v[r][order]);
+    if(map[key]) throw new Error(sheet.getName()+' 정규화 주문키 중복: '+key);
+    var fields={}, parts=[];
+    for(var c=0;c<h.length;c++){
+      var header=h[c] || ('COL'+(c+1));
+      if(c===account||c===order) continue;
+      var sem=i60Semantic_(v[r][c],header);
+      fields[header]=sem;
+      parts.push(header+'='+sem);
+    }
+    map[key]={fields:fields,fingerprint:parts.join('\u001e')};
   }
-  return rows+'x'+cols+'|'+(h1>>>0).toString(16)+'|'+(h2>>>0).toString(16);
+  return {map:map};
 }
 
-function i59Cell_(v) {
-  if (Object.prototype.toString.call(v)==='[object Date]' && !isNaN(v.getTime())) return 'D:'+v.toISOString();
-  if (typeof v==='number') return 'N:'+String(v);
-  if (typeof v==='boolean') return 'B:'+String(v);
-  return 'T:'+i59Text_(v);
+function i60FirstFieldDiff_(a,b){
+  var keys={}; Object.keys(a.fields).forEach(function(k){keys[k]=1;}); Object.keys(b.fields).forEach(function(k){keys[k]=1;});
+  var names=Object.keys(keys).sort();
+  for(var i=0;i<names.length;i++){
+    var k=names[i], x=a.fields[k], y=b.fields[k];
+    if(x!==y) return {header:k,left:x,right:y};
+  }
+  return {header:'',left:a.fingerprint,right:b.fingerprint};
 }
 
-function i59WriteStatus_(sheet, status, stage, message, x) {
+function i60Semantic_(v, header) {
+  var h=i60Text_(header);
+  if (/금액|후보수|주문건수|매입금액|승인금액/.test(h)) return 'NUM:'+String(i60Num_(v));
+  if (/일$|일자|날짜|승인일|주문일/.test(h)) return 'DATE:'+i60DateKey_(v);
+  if (h==='카드매칭상태' || h==='매칭상태') return 'STATUS:'+i60Status_(v);
+  return 'TEXT:'+i60Text_(v);
+}
+
+function i60DetailRow_(x){return [x.kind,x.label,x.row||'',x.col||'',x.header||'',x.leftStrict||'',x.rightStrict||'',x.leftDisplay||'',x.rightDisplay||'',x.key||'',x.note||''];}
+function i60LogicalDetailRow_(x){return [x.kind,x.label,'','',x.header||'',x.leftStrict||'',x.rightStrict||'',x.leftDisplay||'',x.rightDisplay||'',x.key||'',x.note||''];}
+
+function i60WriteDetail_(ss, rows) {
+  var sh=ss.getSheetByName(I60_DETAIL)||ss.insertSheet(I60_DETAIL);
+  sh.clearContents();
+  if(rows.length) sh.getRange(1,1,rows.length,rows[0].length).setValues(rows);
+  sh.setFrozenRows(1);
+  sh.getRange(1,1,1,rows[0].length).setFontWeight('bold');
+  sh.setColumnWidth(1,100); sh.setColumnWidth(2,180); sh.setColumnWidth(5,180); sh.setColumnWidth(6,260); sh.setColumnWidth(7,260); sh.setColumnWidth(10,220); sh.setColumnWidth(11,180);
+}
+
+function i60WriteStatus_(sh,status,stage,message,x){
   x=x||{};
   var rows=[
-    ['항목','값'],
-    ['버전',I59_VERSION],
-    ['상태',status],
-    ['단계',stage],
-    ['메시지',message],
-    ['운영시트 변경',x.operatingChange||'0'],
-    ['백업시트',x.backup||''],
-    ['운영주문',x.orders||0],
-    ['MATCHED',x.matched||0],
-    ['NON_CARD',x.nonCard||0],
-    ['AMBIGUOUS',x.ambiguous||0],
-    ['NO_MATCH',x.noMatch||0],
-    ['v6.69 2차귀속',x.v669||0],
-    ['v6.70 3차귀속',x.v670||0],
-    ['주문매입금액합계',x.purchase||0],
-    ['정규화overlap',x.overlap||0],
-    ['상태변경검증',x.changedOrders||0],
-    ['기존_MATCHED',x.oldMatched||0],
-    ['기존_NON_CARD',x.oldNonCard||0],
-    ['기존_AMBIGUOUS',x.oldAmbiguous||0],
-    ['기존_NO_MATCH',x.oldNoMatch||0],
-    ['기존매입합계',x.oldPurchase||0],
-    ['부가세_신고자료 변경',x.vatChange||'0'],
-    ['부가세_기간별 변경',x.periodChange||'0'],
-    ['카드사용내역_붙여넣기 변경',x.historyChange||'0'],
-    ['카드_마스터 변경',x.masterChange||'0'],
-    ['롤백',x.rollback||'0'],
-    ['오류',x.error||''],
-    ['완료시각',(status==='PASS'||status==='ROLLED_BACK'||status==='ERROR'||status==='ROLLBACK_ERROR')?new Date().toISOString():''],
-    ['갱신시각',new Date().toISOString()]
+    ['항목','값'],['버전',I60_VERSION],['상태',status],['단계',stage],['메시지',message],
+    ['판정',x.classification||''],
+    ['현재운영주문',x.currentOrders||0],['현재_MATCHED',x.currentMatched||0],['현재_NON_CARD',x.currentNonCard||0],['현재_AMBIGUOUS',x.currentAmbiguous||0],['현재_NO_MATCH',x.currentNoMatch||0],
+    ['현재_v6.69',x.currentV669||0],['현재_v6.70',x.currentV670||0],['현재매입합계',x.currentPurchase||0],['현재정규화중복',x.currentDup||0],
+    ['현재/백업_overlap',x.overlapBackup||0],['현재/preview_overlap',x.overlapPreview||0],
+    ['current_vs_backup_strict셀차이',x.strictOld||0],['current_vs_backup_display셀차이',x.displayOld||0],['current_vs_backup_material행차이',x.logicalOld||0],
+    ['backupOnly',x.oldOnlyBackup||0],['currentOnly_vs_backup',x.currentOnlyBackup||0],
+    ['current_vs_preview_strict셀차이',x.strictNew||0],['current_vs_preview_display셀차이',x.displayNew||0],['current_vs_preview_material행차이',x.logicalNew||0],
+    ['previewOnly',x.oldOnlyPreview||0],['currentOnly_vs_preview',x.currentOnlyPreview||0],
+    ['old집계일치',x.oldStatsMatch||''],['new집계일치',x.newStatsMatch||''],
+    ['부가세_카드매칭검증 변경',x.prodChange||'0'],['Issue59백업 변경',x.backupChange||'0'],['Issue54preview 변경',x.previewChange||'0'],
+    ['부가세_신고자료 변경',x.vatChange||'0'],['부가세_기간별 변경',x.periodChange||'0'],['카드사용내역_붙여넣기 변경',x.historyChange||'0'],['카드_마스터 변경',x.masterChange||'0'],
+    ['오류',x.error||''],['완료시각',(status==='PASS'||status==='ERROR')?new Date().toISOString():''],['갱신시각',new Date().toISOString()]
   ];
-  sheet.clearContents();
-  sheet.getRange(1,1,rows.length,2).setValues(rows);
-  sheet.setFrozenRows(1);
-  sheet.getRange(1,1,1,2).setFontWeight('bold');
-  sheet.setColumnWidth(1,230);
-  sheet.setColumnWidth(2,650);
+  sh.clearContents(); sh.getRange(1,1,rows.length,2).setValues(rows); sh.setFrozenRows(1); sh.getRange(1,1,1,2).setFontWeight('bold'); sh.setColumnWidth(1,300); sh.setColumnWidth(2,700);
 }
 
-function i59Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
-function i59Find_(headers,names){for(var i=0;i<names.length;i++){var x=headers.indexOf(names[i]);if(x>=0)return x;}return -1;}
-function i59Text_(v){return String(v==null?'':v).trim();}
-function i59Num_(v){var n=Number(typeof v==='number'?v:i59Text_(v).replace(/[,원\s]/g,''));return isNaN(n)?0:n;}
-function i59NormOrder_(v){
-  if(typeof v==='number'&&isFinite(v))return String(Math.trunc(v));
-  var s=i59Text_(v).replace(/[,\s]/g,'');
-  if(/^\d+\.0+$/.test(s))s=s.replace(/\.0+$/,'');
-  return s;
+function i60SheetSig_(sheet){
+  var rows=sheet.getLastRow(),cols=sheet.getLastColumn();
+  if(!rows||!cols)return 'EMPTY|'+rows+'|'+cols;
+  var vals=sheet.getRange(1,1,rows,cols).getValues(),h=2166136261;
+  for(var r=0;r<vals.length;r++)for(var c=0;c<vals[r].length;c++){
+    var s=i60Strict_(vals[r][c])+'\u001f';
+    for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
+  }
+  return rows+'x'+cols+'|'+(h>>>0).toString(16);
 }
-function i59Key_(account,order){
-  var a=i59Text_(account).toLowerCase(),o=i59NormOrder_(order);
-  return a&&o?a+'|'+o:'';
+function i60Strict_(v){
+  if(v==='__MISSING_CELL__')return 'MISSING';
+  if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return 'D:'+v.toISOString();
+  if(typeof v==='number')return 'N:'+String(v);
+  if(typeof v==='boolean')return 'B:'+String(v);
+  return 'T:'+i60Text_(v);
 }
+function i60Status_(v){var s=i60Text_(v);if(s==='MASTER_MATCHED')return 'MATCHED';if(s==='MATCHED'||s==='NON_CARD'||s==='AMBIGUOUS'||s==='NO_MATCH')return s;return s||'NO_MATCH';}
+function i60DateKey_(v){
+  if(Object.prototype.toString.call(v)==='[object Date]'&&!isNaN(v.getTime()))return Utilities.formatDate(v,Session.getScriptTimeZone()||'Asia/Seoul','yyyy-MM-dd HH:mm:ss');
+  var s=i60Text_(v); var m=s.match(/(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(!m)return s;
+  return m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2)+(m[4]?' '+('0'+m[4]).slice(-2)+':'+m[5]+':'+(m[6]||'00'):'');
+}
+function i60Key_(account,order){var a=i60Text_(account).toLowerCase();var o=i60Text_(order).replace(/[\s._()\[\]{}\-\/]/g,'').replace(/^0+(?=\d)/,'');return a&&o?a+'|'+o:'';}
+function i60Num_(v){var n=Number(typeof v==='number'?v:i60Text_(v).replace(/[,원\s]/g,''));return isNaN(n)?0:n;}
+function i60Text_(v){return String(v==null?'':v).trim();}
+function i60Find_(h,names){for(var i=0;i<names.length;i++){var x=h.indexOf(names[i]);if(x>=0)return x;}return -1;}
+function i60Overlap_(a,b){var n=0;Object.keys(a||{}).forEach(function(k){if(b&&b[k])n++;});return n;}
+function i60Ensure_(ss,name){return ss.getSheetByName(name)||ss.insertSheet(name);}
