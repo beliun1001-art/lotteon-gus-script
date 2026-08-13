@@ -30,7 +30,6 @@ function runLotteonRemoteTaskStartRemote_() {
 
     var oldSigBefore = i55Signature_(oldSh.getDataRange().getValues());
     var vatSigBefore = i55Signature_(vatSh.getDataRange().getValues());
-
     var oldData = i55Load_(oldSh, true);
     var newData = i55Load_(newSh, true);
 
@@ -72,7 +71,6 @@ function runLotteonRemoteTaskStartRemote_() {
         o.reason,n.reason,o.v669,n.v669,o.v670,n.v670,o.evidenceKey,n.evidenceKey
       ]);
     });
-
     i55Req_(changed.length + unchanged === 1355, '변경/동일 주문 합계 불일치');
 
     var out=i55Ensure_(ss,LOTTEON_REMOTE_TASK.outputSheet);
@@ -120,17 +118,9 @@ function runLotteonRemoteTaskStartRemote_() {
 }
 
 function runLotteonRemoteTaskContinueRemote_(){return {ok:true,done:true,reason:'NO_CONTINUE_REQUIRED'};}
-
 function i55Load_(sheet, filterHalf){
   var v=sheet.getDataRange().getValues(), h=v[0].map(i55Text_);
-  var ix={
-    year:i55Find_(h,['신고연도']),half:i55Find_(h,['반기']),date:i55Find_(h,['주문일','주문일자','날짜']),
-    account:i55Find_(h,['쿠팡계정ID']),order:i55Find_(h,['주문번호']),purchase:i55Find_(h,['주문매입금액','매입금액']),
-    payment:i55Find_(h,['롯데결제수단']),company:i55Find_(h,['구매카드사']),cardName:i55Find_(h,['구매카드명']),end4:i55Find_(h,['카드번호끝4']),
-    approvalDate:i55Find_(h,['승인일']),approvalNo:i55Find_(h,['승인번호']),approvalAmount:i55Find_(h,['승인금액']),
-    status:i55Find_(h,['카드매칭상태']),reason:i55Find_(h,['카드매칭근거']),v669:i55Find_(h,['v6.69 2차귀속']),v670:i55Find_(h,['v6.70 3차귀속']),
-    evidenceKey:i55Find_(h,['canonicalEvidenceKey'])
-  };
+  var ix={year:i55Find_(h,['신고연도']),half:i55Find_(h,['반기']),date:i55Find_(h,['주문일','주문일자','날짜']),account:i55Find_(h,['쿠팡계정ID']),order:i55Find_(h,['주문번호']),purchase:i55Find_(h,['주문매입금액','매입금액']),payment:i55Find_(h,['롯데결제수단']),company:i55Find_(h,['구매카드사']),cardName:i55Find_(h,['구매카드명']),end4:i55Find_(h,['카드번호끝4']),approvalDate:i55Find_(h,['승인일']),approvalNo:i55Find_(h,['승인번호']),approvalAmount:i55Find_(h,['승인금액']),status:i55Find_(h,['카드매칭상태']),reason:i55Find_(h,['카드매칭근거']),v669:i55Find_(h,['v6.69 2차귀속']),v670:i55Find_(h,['v6.70 3차귀속']),evidenceKey:i55Find_(h,['canonicalEvidenceKey'])};
   i55Req_(ix.account>=0&&ix.order>=0&&ix.status>=0,'필수 헤더 누락: '+sheet.getName());
   var map={},rows=0,dup=0,purchase=0,counts={MATCHED:0,NON_CARD:0,AMBIGUOUS:0,NO_MATCH:0};
   for(var r=1;r<v.length;r++){
@@ -140,12 +130,7 @@ function i55Load_(sheet, filterHalf){
     var account=i55Text_(row[ix.account]).toLowerCase(),order=i55Text_(row[ix.order]),key=i55Key_(account,order);
     if(!key)continue;
     if(map[key])dup++;
-    var rec={
-      account:account,order:order,date:i55Val_(row,ix.date),purchase:i55Num_(i55ValRaw_(row,ix.purchase)),payment:i55Val_(row,ix.payment),
-      company:i55Val_(row,ix.company),cardName:i55Val_(row,ix.cardName),end4:i55End4_(i55Val_(row,ix.end4)),
-      approvalDate:i55Val_(row,ix.approvalDate),approvalNo:i55Val_(row,ix.approvalNo),approvalAmount:i55Num_(i55ValRaw_(row,ix.approvalAmount)),
-      status:i55Status_(i55Val_(row,ix.status)),reason:i55Val_(row,ix.reason),v669:i55Val_(row,ix.v669),v670:i55Val_(row,ix.v670),evidenceKey:i55Val_(row,ix.evidenceKey)
-    };
+    var rec={account:account,order:order,date:i55Val_(row,ix.date),purchase:i55Num_(i55ValRaw_(row,ix.purchase)),payment:i55Val_(row,ix.payment),company:i55Val_(row,ix.company),cardName:i55Val_(row,ix.cardName),end4:i55End4_(i55Val_(row,ix.end4)),approvalDate:i55Val_(row,ix.approvalDate),approvalNo:i55Val_(row,ix.approvalNo),approvalAmount:i55Num_(i55ValRaw_(row,ix.approvalAmount)),status:i55Status_(i55Val_(row,ix.status)),reason:i55Val_(row,ix.reason),v669:i55Val_(row,ix.v669),v670:i55Val_(row,ix.v670),evidenceKey:i55Val_(row,ix.evidenceKey)};
     map[key]=rec;rows++;purchase+=rec.purchase;counts[rec.status]=(counts[rec.status]||0)+1;
   }
   return {map:map,rows:rows,dup:dup,purchase:purchase,counts:counts};
